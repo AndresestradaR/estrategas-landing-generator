@@ -2,32 +2,6 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { decrypt } from '@/lib/services/encryption'
 
-const COPYWRITING_SYSTEM_PROMPT = `Eres un experto copywriter de e-commerce en español para Latinoamérica.
-
-Tu tarea es generar textos de marketing CORTOS y PODEROSOS para un banner de producto.
-
-REGLAS CRITICAS:
-- Textos MUY CORTOS (máximo 4-5 palabras por línea)
-- TODO EN MAYUSCULAS para impacto visual
-- Usa palabras que vendan: GRATIS, OFERTA, RESULTADOS, POTENCIA, TRANSFORMA, PREMIUM
-- SIN tildes/acentos (escribir POTENCIA no POTÉNCIA, FORMULA no FÓRMULA)
-- Frases que generen urgencia y deseo
-- Si ves fotos del producto, identifica qué tipo de producto es y genera copy relevante
-
-Responde SOLO en JSON con esta estructura exacta:
-{
-  "headline": "TEXTO PRINCIPAL (max 5 palabras, sin tildes)",
-  "subheadline": "SUBTITULO PERSUASIVO (max 6 palabras, sin tildes)", 
-  "cta": "LLAMADO A ACCION (max 3 palabras)",
-  "footer": "BENEFICIO CLAVE (max 6 palabras, sin tildes)"
-}
-
-EJEMPLOS BUENOS:
-- Headlines: "TRANSFORMA TU CUERPO", "RESULTADOS REALES", "POTENCIA MAXIMA", "BELLEZA NATURAL"
-- Subheadlines: "EN SOLO 30 DIAS", "FORMULA PROFESIONAL", "CALIDAD PREMIUM"
-- CTAs: "COMPRAR AHORA", "LO QUIERO", "PEDIR HOY"
-- Footers: "ENVIO GRATIS + PAGO CONTRAENTREGA", "GARANTIA 100% SATISFACCION"`
-
 function getAspectRatio(outputSize: string): string {
   if (outputSize === '1080x1920' || outputSize === '9:16') return '9:16'
   if (outputSize === '1080x1080' || outputSize === '1:1') return '1:1'
@@ -43,116 +17,19 @@ function parseDataUrl(dataUrl: string): { data: string; mimeType: string } | nul
   return { data, mimeType }
 }
 
-// Remove accents from text to avoid rendering issues
-function removeAccents(text: string): string {
-  return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase()
-}
-
-// STEP 1: Generate marketing copy analyzing images + optional user input
-async function generateMarketingCopy(
+// Generate image with Gemini - single step, proven approach
+async function generateImageWithGemini(
   apiKey: string,
-  productName: string,
+  templateBase64: string,
+  templateMimeType: string,
   productPhotosBase64: { data: string; mimeType: string }[],
+  productName: string,
   creativeControls?: {
     productDetails?: string
     salesAngle?: string
     targetAvatar?: string
     additionalInstructions?: string
   }
-): Promise<{ headline: string; subheadline: string; cta: string; footer: string }> {
-  const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent'
-  
-  const parts: any[] = []
-  
-  // Add product photos for visual analysis
-  for (const photo of productPhotosBase64) {
-    parts.push({
-      inline_data: { mime_type: photo.mimeType, data: photo.data }
-    })
-  }
-  
-  // Build prompt based on available info
-  const hasUserInput = creativeControls?.productDetails || creativeControls?.salesAngle || creativeControls?.targetAvatar
-  
-  let promptText = ''
-  
-  if (hasUserInput) {
-    // User provided info - use it
-    promptText = `Genera textos de marketing para este producto:
-
-NOMBRE: ${productName}
-${creativeControls?.productDetails ? `DESCRIPCION DEL PRODUCTO: ${creativeControls.productDetails}` : ''}
-${creativeControls?.salesAngle ? `ANGULO DE VENTA: ${creativeControls.salesAngle}` : ''}
-${creativeControls?.targetAvatar ? `CLIENTE IDEAL: ${creativeControls.targetAvatar}` : ''}
-${creativeControls?.additionalInstructions ? `INSTRUCCIONES ADICIONALES: ${creativeControls.additionalInstructions}` : ''}
-
-Las imagenes adjuntas son fotos del producto. Usa la informacion proporcionada para crear textos de marketing perfectos.
-
-Genera textos CORTOS, PODEROSOS, en MAYUSCULAS y SIN TILDES.`
-  } else {
-    // No user input - analyze images
-    promptText = `Analiza las imagenes del producto adjuntas y genera textos de marketing.
-
-NOMBRE DEL PRODUCTO: ${productName}
-
-INSTRUCCIONES:
-1. Mira las fotos del producto cuidadosamente
-2. Identifica que tipo de producto es (suplemento, cosmetico, electronico, ropa, etc)
-3. Identifica los colores y estilo del producto
-4. Genera textos de marketing relevantes para ESE tipo de producto
-
-Genera textos CORTOS, PODEROSOS, en MAYUSCULAS y SIN TILDES.
-Los textos deben ser relevantes para lo que VES en las imagenes.`
-  }
-  
-  parts.push({ text: promptText })
-
-  try {
-    const response = await fetch(`${endpoint}?key=${apiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: COPYWRITING_SYSTEM_PROMPT }] },
-        contents: [{ parts }],
-        generationConfig: { responseMimeType: 'application/json' }
-      }),
-    })
-
-    if (!response.ok) {
-      throw new Error('API error')
-    }
-
-    const data = await response.json()
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
-    
-    const copy = JSON.parse(text)
-    return {
-      headline: removeAccents(copy.headline || 'CALIDAD PREMIUM'),
-      subheadline: removeAccents(copy.subheadline || 'RESULTADOS INCREIBLES'),
-      cta: removeAccents(copy.cta || 'COMPRAR AHORA'),
-      footer: removeAccents(copy.footer || 'ENVIO GRATIS')
-    }
-  } catch (error) {
-    console.error('Copywriting error:', error)
-    // Fallback texts
-    const cleanName = removeAccents(productName).slice(0, 25)
-    return {
-      headline: cleanName,
-      subheadline: 'RESULTADOS GARANTIZADOS',
-      cta: 'COMPRAR AHORA',
-      footer: 'ENVIO GRATIS + PAGO CONTRAENTREGA'
-    }
-  }
-}
-
-// STEP 2: Generate image with exact texts
-async function generateImageWithGemini(
-  apiKey: string,
-  templateBase64: string,
-  templateMimeType: string,
-  productPhotosBase64: { data: string; mimeType: string }[],
-  marketingCopy: { headline: string; subheadline: string; cta: string; footer: string },
-  productName: string
 ): Promise<{ imageBase64: string; mimeType: string } | null> {
   const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent'
   
@@ -170,33 +47,53 @@ async function generateImageWithGemini(
     })
   }
   
-  // Prompt with EXACT texts
-  const prompt = `RECREATE THIS BANNER FOR A NEW PRODUCT.
+  // Build prompt - single comprehensive prompt
+  const hasCreativeControls = creativeControls?.productDetails || creativeControls?.salesAngle || creativeControls?.targetAvatar
+  
+  let prompt = `RECREATE THIS BANNER WITH A NEW PRODUCT.
 
-=== IMAGES PROVIDED ===
-IMAGE 1: Design template - copy the EXACT layout, people poses, design elements, visual style
-IMAGES 2+: The NEW product that must appear in the banner
+=== IMAGES ===
+IMAGE 1: Design template - use this as visual reference for layout, style, colors, composition
+IMAGES 2+: The user's product - THIS is what must appear in the final banner
 
-=== PRODUCT ===
-Name: ${productName}
+=== PRODUCT INFO ===
+Product Name: ${productName}
+${creativeControls?.productDetails ? `Product Details: ${creativeControls.productDetails}` : ''}
+${creativeControls?.salesAngle ? `Sales Angle: ${creativeControls.salesAngle}` : ''}
+${creativeControls?.targetAvatar ? `Target Customer: ${creativeControls.targetAvatar}` : ''}
+${creativeControls?.additionalInstructions ? `Special Instructions: ${creativeControls.additionalInstructions}` : ''}
 
-=== CRITICAL: EXACT TEXTS TO WRITE ===
-You MUST write these texts EXACTLY as shown. Copy character by character. Do NOT modify, translate, or change anything:
+=== CRITICAL INSTRUCTIONS ===
 
-HEADLINE (large bold text, prominent position): "${marketingCopy.headline}"
-SUBHEADLINE (medium text, below headline): "${marketingCopy.subheadline}"
-CTA (call to action, button style or highlighted): "${marketingCopy.cta}"
-FOOTER (smaller text at bottom): "${marketingCopy.footer}"
+1. PRODUCT REPLACEMENT (MOST IMPORTANT):
+   - Look at IMAGES 2+ carefully - this is the user's actual product
+   - The product in IMAGE 1 (template) must be COMPLETELY REPLACED with the user's product
+   - Show the user's product clearly with its actual label, colors, and branding
+   - The user's product must be the hero/focus of the banner
 
-=== DESIGN INSTRUCTIONS ===
-1. LAYOUT: Copy the EXACT same layout from the template (positions, composition, visual hierarchy)
-2. PEOPLE/MODELS: Keep the EXACT same people with same poses, expressions, clothing style
-3. PRODUCT: Replace the template's product with the product from images 2+
-4. COLORS: Adapt the color scheme to match the new product's packaging colors
-5. TEXTS: Write the texts EXACTLY as provided above - large, bold, easy to read
-6. QUALITY: Professional e-commerce banner quality, ready to use
+2. LAYOUT & COMPOSITION:
+   - Keep the same general layout structure as the template
+   - Keep similar poses if there are people
+   - Keep decorative elements (shapes, gradients, effects) in similar positions
 
-IMPORTANT: The texts must be written EXACTLY as provided. Do not add accents, do not change words, do not translate. Copy them exactly.`
+3. COLOR ADAPTATION:
+   - Adapt the color scheme to match the user's product packaging colors
+   - Background, accents, and text colors should complement the product
+
+4. TEXT IN SPANISH:
+   - Generate SHORT, POWERFUL marketing text in Spanish
+   - Use UPPERCASE for headlines
+   - Keep text minimal: one headline, one subheadline, one CTA
+   - Text must be CLEAR and READABLE
+   - NO spelling errors
+   ${hasCreativeControls ? `- Base the text on the product details and sales angle provided above` : `- Base the text on what you see in the product photos`}
+
+=== OUTPUT ===
+Create a professional e-commerce banner that:
+- Features the USER'S PRODUCT (from images 2+) as the main product
+- Uses the template's layout style
+- Has colors matching the user's product
+- Has clear, error-free Spanish marketing text`
 
   parts.push({ text: prompt })
 
@@ -292,26 +189,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No se pudieron procesar las fotos' }, { status: 400 })
     }
 
-    // ============ STEP 1: Generate Marketing Copy ============
-    console.log('Step 1: Generating marketing copy...')
-    const marketingCopy = await generateMarketingCopy(
-      apiKey,
-      productName,
-      productPhotosBase64,
-      creativeControls
-    )
-    console.log('Generated copy:', marketingCopy)
-
-    // ============ STEP 2: Generate Image with Exact Texts ============
-    console.log('Step 2: Generating image...')
+    // Generate image
+    console.log('Generating image with product:', productName)
+    console.log('Creative controls:', creativeControls)
     
     const imageResult = await generateImageWithGemini(
       apiKey,
       templateBase64,
       templateMimeType,
       productPhotosBase64,
-      marketingCopy,
-      productName
+      productName,
+      creativeControls
     )
 
     if (!imageResult) {
@@ -334,7 +222,7 @@ export async function POST(request: Request) {
         template_id: templateId || null,
         output_size: outputSize,
         generated_image_url: generatedImageUrl,
-        prompt_used: JSON.stringify(marketingCopy),
+        prompt_used: `Product: ${productName}`,
         status: 'completed',
       })
       .select()
