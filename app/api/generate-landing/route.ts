@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { decrypt } from '@/lib/services/encryption'
-import { GoogleGenerativeAI } from '@google/generative-ai'
 
 const LANDING_SYSTEM_PROMPT = `You are an expert e-commerce landing page designer. Your task is to create a detailed prompt for generating professional, high-converting landing page section images.
 
@@ -21,6 +20,141 @@ Return ONLY a detailed image generation prompt in English that describes:
 - Professional e-commerce quality standards
 
 Be extremely specific and detailed for best results with image generation AI.`
+
+// Helper to convert aspect ratio string to Gemini format
+function getAspectRatio(outputSize: string): string {
+  if (outputSize === '1080x1920' || outputSize === '9:16') return '9:16'
+  if (outputSize === '1080x1080' || outputSize === '1:1') return '1:1'
+  if (outputSize === '1920x1080' || outputSize === '16:9') return '16:9'
+  return '9:16' // Default for mobile landing pages
+}
+
+// Call Gemini API directly via REST for image generation
+async function generateImageWithGemini(
+  apiKey: string,
+  prompt: string,
+  aspectRatio: string,
+  templateBase64?: string,
+  templateMimeType?: string
+): Promise<{ imageBase64: string; mimeType: string } | null> {
+  const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent'
+  
+  // Build the parts array
+  const parts: any[] = [{ text: prompt }]
+  
+  // Add template image as reference if provided
+  if (templateBase64 && templateMimeType) {
+    parts.unshift({
+      inline_data: {
+        mime_type: templateMimeType,
+        data: templateBase64
+      }
+    })
+    // Prepend instruction to use template as reference
+    parts[1] = { 
+      text: `Use the provided image as a design reference/template. Recreate a similar layout and style but with the following content:\n\n${prompt}`
+    }
+  }
+
+  const payload = {
+    contents: [{
+      parts: parts
+    }],
+    generationConfig: {
+      responseModalities: ['IMAGE'],
+      imageConfig: {
+        aspectRatio: aspectRatio
+      }
+    }
+  }
+
+  try {
+    const response = await fetch(`${endpoint}?key=${apiKey}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('Gemini Image API error:', errorText)
+      throw new Error(`Gemini API error: ${response.status} - ${errorText}`)
+    }
+
+    const data = await response.json()
+    
+    // Extract image from response
+    const candidates = data.candidates || []
+    for (const candidate of candidates) {
+      const contentParts = candidate.content?.parts || []
+      for (const part of contentParts) {
+        if (part.inlineData?.data) {
+          return {
+            imageBase64: part.inlineData.data,
+            mimeType: part.inlineData.mimeType || 'image/png'
+          }
+        }
+      }
+    }
+    
+    return null
+  } catch (error: any) {
+    console.error('Gemini Image generation error:', error)
+    throw error
+  }
+}
+
+// Call Gemini for prompt enhancement (text only)
+async function enhancePromptWithGemini(
+  apiKey: string,
+  userPrompt: string,
+  templateBase64?: string,
+  templateMimeType?: string
+): Promise<string> {
+  const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent'
+  
+  const parts: any[] = []
+  
+  // Add template image if provided
+  if (templateBase64 && templateMimeType) {
+    parts.push({
+      inline_data: {
+        mime_type: templateMimeType,
+        data: templateBase64
+      }
+    })
+  }
+  
+  parts.push({ text: userPrompt })
+
+  const payload = {
+    systemInstruction: {
+      parts: [{ text: LANDING_SYSTEM_PROMPT }]
+    },
+    contents: [{
+      parts: parts
+    }]
+  }
+
+  const response = await fetch(`${endpoint}?key=${apiKey}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Gemini API error: ${response.status} - ${errorText}`)
+  }
+
+  const data = await response.json()
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+  return text
+}
 
 export async function POST(request: Request) {
   try {
@@ -53,7 +187,7 @@ export async function POST(request: Request) {
     // Get user's API keys
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('google_api_key, nano_banana_key')
+      .select('google_api_key')
       .eq('id', user.id)
       .single()
 
@@ -62,10 +196,28 @@ export async function POST(request: Request) {
     }
 
     const googleApiKey = decrypt(profile.google_api_key)
-    const nanoBananaKey = profile.nano_banana_key ? decrypt(profile.nano_banana_key) : null
+
+    // Fetch and convert template image to base64
+    let templateBase64: string | undefined
+    let templateMimeType: string | undefined
+    
+    if (templateUrl.startsWith('data:')) {
+      templateBase64 = templateUrl.split(',')[1]
+      templateMimeType = templateUrl.split(';')[0].split(':')[1]
+    } else {
+      try {
+        const response = await fetch(templateUrl)
+        const buffer = await response.arrayBuffer()
+        templateBase64 = Buffer.from(buffer).toString('base64')
+        templateMimeType = response.headers.get('content-type') || 'image/jpeg'
+      } catch (e) {
+        console.error('Error fetching template:', e)
+        return NextResponse.json({ error: 'Error al cargar plantilla' }, { status: 500 })
+      }
+    }
 
     // Build the analysis prompt
-    let userPrompt = `Analyze this landing page template and create a detailed image generation prompt.
+    const userPrompt = `Analyze this landing page template and create a detailed image generation prompt.
 
 PRODUCT TO FEATURE: ${productName}
 ${creativeControls?.productDetails ? `PRODUCT DETAILS: ${creativeControls.productDetails}` : ''}
@@ -75,152 +227,88 @@ ${creativeControls?.additionalInstructions ? `STYLE NOTES: ${creativeControls.ad
 
 Create a detailed prompt that describes how to recreate this template design but featuring the product above. Include specific details about layout, colors, text placement, and styling. The generated image should look professional and ready for a real e-commerce landing page.`
 
-    // Use Gemini to analyze template and create prompt
-    const genAI = new GoogleGenerativeAI(googleApiKey)
-    
-    // Prepare image parts for analysis
-    const imageParts = []
-    
-    // Add template image
-    if (templateUrl.startsWith('data:')) {
-      const base64Data = templateUrl.split(',')[1]
-      const mimeType = templateUrl.split(';')[0].split(':')[1]
-      imageParts.push({
-        inlineData: {
-          data: base64Data,
-          mimeType: mimeType
-        }
-      })
-    } else {
-      try {
-        const response = await fetch(templateUrl)
-        const buffer = await response.arrayBuffer()
-        const base64 = Buffer.from(buffer).toString('base64')
-        const contentType = response.headers.get('content-type') || 'image/jpeg'
-        imageParts.push({
-          inlineData: {
-            data: base64,
-            mimeType: contentType
-          }
-        })
-      } catch (e) {
-        console.error('Error fetching template:', e)
-        return NextResponse.json({ error: 'Error al cargar plantilla' }, { status: 500 })
-      }
-    }
-
-    // Use gemini-2.0-flash (current stable model with vision)
-    const model = genAI.getGenerativeModel({ 
-      model: 'gemini-2.0-flash',
-      systemInstruction: LANDING_SYSTEM_PROMPT,
-    })
-
+    // Step 1: Enhance the prompt using Gemini 2.0 Flash (fast, cheap)
     let enhancedPrompt: string
-
     try {
-      const result = await model.generateContent([
+      enhancedPrompt = await enhancePromptWithGemini(
+        googleApiKey,
         userPrompt,
-        ...imageParts
-      ])
-
-      const response = await result.response
-      enhancedPrompt = response.text()
-    } catch (geminiError: any) {
-      console.error('Gemini error:', geminiError)
-      
-      // If Gemini fails, create a basic prompt
-      if (geminiError.message?.includes('quota') || geminiError.message?.includes('429')) {
-        // Build fallback prompt without AI
-        enhancedPrompt = `Professional e-commerce landing page section featuring ${productName}. 
+        templateBase64,
+        templateMimeType
+      )
+    } catch (error: any) {
+      console.error('Prompt enhancement error:', error)
+      // Fallback to basic prompt
+      enhancedPrompt = `Professional e-commerce landing page section featuring ${productName}. 
 ${creativeControls?.productDetails ? `Product: ${creativeControls.productDetails}. ` : ''}
 ${creativeControls?.salesAngle ? `Sales angle: ${creativeControls.salesAngle}. ` : ''}
-Modern design, clean layout, Spanish sales copy, high quality product photography, 
-gradient background, professional lighting, ready for landing page use.
+Modern design with bold typography, clean layout, Spanish sales copy, 
+high quality product photography, gradient background, professional lighting.
+Vertical mobile-optimized layout (9:16 aspect ratio).
 ${creativeControls?.additionalInstructions || ''}`
-      } else {
-        return NextResponse.json({ 
-          error: `Error de Google AI: ${geminiError.message}` 
-        }, { status: 500 })
-      }
     }
 
-    // Now generate image with Nano Banana if available
-    let generatedImageUrl = null
+    // Step 2: Generate image using Gemini 2.5 Flash Image
+    const aspectRatio = getAspectRatio(outputSize)
+    let generatedImageUrl: string | null = null
 
-    if (nanoBananaKey) {
-      try {
-        const nanoBananaResponse = await fetch('https://api.nanobanana.net/v1/generate', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${nanoBananaKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            prompt: enhancedPrompt,
-            aspect_ratio: outputSize === '1080x1920' ? '9:16' : '1:1',
-            style: 'professional',
-          }),
-        })
+    try {
+      const imageResult = await generateImageWithGemini(
+        googleApiKey,
+        enhancedPrompt,
+        aspectRatio,
+        templateBase64,
+        templateMimeType
+      )
 
-        if (nanoBananaResponse.ok) {
-          const nanoBananaData = await nanoBananaResponse.json()
-          generatedImageUrl = nanoBananaData.image_url || nanoBananaData.url
-        } else {
-          console.error('Nano Banana error:', await nanoBananaResponse.text())
-        }
-      } catch (nbError) {
-        console.error('Nano Banana error:', nbError)
+      if (imageResult) {
+        generatedImageUrl = `data:${imageResult.mimeType};base64,${imageResult.imageBase64}`
       }
+    } catch (imageError: any) {
+      console.error('Image generation error:', imageError)
+      
+      return NextResponse.json({ 
+        success: false,
+        error: `Error generando imagen: ${imageError.message}`,
+        enhancedPrompt: enhancedPrompt,
+        tip: 'Verifica que tu API key de Google tenga acceso a Gemini 2.5 Flash Image y facturación habilitada.'
+      }, { status: 200 })
     }
 
-    // If no Nano Banana or it failed, try Imagen (if available)
-    if (!generatedImageUrl) {
-      try {
-        const imagenModel = genAI.getGenerativeModel({ model: 'imagen-3.0-generate-002' })
-        const imagenResult = await imagenModel.generateContent(enhancedPrompt)
-        const imagenResponse = await imagenResult.response
-        const imagenParts = imagenResponse.candidates?.[0]?.content?.parts || []
-        
-        for (const part of imagenParts) {
-          if (part.inlineData?.mimeType?.startsWith('image/')) {
-            generatedImageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`
-            break
-          }
-        }
-      } catch (imagenError: any) {
-        console.error('Imagen model error:', imagenError.message)
-      }
-    }
-
-    // Return enhanced prompt even if image generation failed
-    // This way the user can use the prompt elsewhere
     if (!generatedImageUrl) {
       return NextResponse.json({ 
         success: false,
-        error: 'No se pudo generar la imagen. Configura tu API key de Nano Banana en Settings para mejor calidad.',
+        error: 'No se pudo generar la imagen. Verifica tu configuración de Google Cloud.',
         enhancedPrompt: enhancedPrompt,
-        tip: 'Puedes usar este prompt en otra herramienta de generación de imágenes.'
-      }, { status: 200 }) // 200 because we have useful data
+        tip: 'Asegúrate de tener facturación habilitada en tu proyecto de Google Cloud.'
+      }, { status: 200 })
     }
 
     // Save to database
     const serviceClient = await createServiceClient()
-    await serviceClient
+    const { data: insertedSection, error: insertError } = await serviceClient
       .from('landing_sections')
       .insert({
         product_id: productId,
         user_id: user.id,
         template_id: templateId || null,
         output_size: outputSize,
-        generated_image_url: generatedImageUrl.substring(0, 500),
-        prompt_used: enhancedPrompt.substring(0, 2000),
+        generated_image_url: generatedImageUrl,
+        prompt_used: enhancedPrompt.substring(0, 4000),
         status: 'completed',
       })
+      .select()
+      .single()
+
+    if (insertError) {
+      console.error('Database insert error:', insertError)
+    }
 
     return NextResponse.json({
       success: true,
       imageUrl: generatedImageUrl,
       enhancedPrompt: enhancedPrompt,
+      sectionId: insertedSection?.id,
     })
   } catch (error: any) {
     console.error('Generate landing API error:', error)
