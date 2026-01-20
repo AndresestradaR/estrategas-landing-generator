@@ -109,9 +109,9 @@ Create a detailed prompt that describes how to recreate this template design but
       }
     }
 
-    // Use gemini-1.5-flash for better quota (vision model for analyzing template)
+    // Use gemini-1.5-flash-latest (correct model name with vision capabilities)
     const model = genAI.getGenerativeModel({ 
-      model: 'gemini-1.5-flash',
+      model: 'gemini-1.5-flash-latest',
       systemInstruction: LANDING_SYSTEM_PROMPT,
     })
 
