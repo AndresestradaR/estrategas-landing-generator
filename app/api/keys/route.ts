@@ -13,7 +13,7 @@ export async function GET() {
 
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('nano_banana_key, gemini_key')
+      .select('google_api_key')
       .eq('id', user.id)
       .single()
 
@@ -21,12 +21,10 @@ export async function GET() {
       return NextResponse.json({ error: 'Perfil no encontrado' }, { status: 404 })
     }
 
-    // Return masked keys
+    // Return masked key
     return NextResponse.json({
-      nanoBananaKey: mask(profile.nano_banana_key),
-      geminiKey: mask(profile.gemini_key),
-      hasNanoBananaKey: !!profile.nano_banana_key,
-      hasGeminiKey: !!profile.gemini_key,
+      maskedGoogleApiKey: mask(profile.google_api_key),
+      hasGoogleApiKey: !!profile.google_api_key,
     })
   } catch (error) {
     return NextResponse.json({ error: 'Error interno' }, { status: 500 })
@@ -43,29 +41,25 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { nanoBananaKey, geminiKey } = body
+    const { googleApiKey } = body
 
-    // Encrypt keys before storing
-    const updateData: Record<string, string | null> = {}
-    
-    if (nanoBananaKey !== undefined) {
-      updateData.nano_banana_key = nanoBananaKey ? encrypt(nanoBananaKey) : null
+    if (!googleApiKey) {
+      return NextResponse.json({ error: 'API key requerida' }, { status: 400 })
     }
-    
-    if (geminiKey !== undefined) {
-      updateData.gemini_key = geminiKey ? encrypt(geminiKey) : null
-    }
+
+    // Encrypt key before storing
+    const encryptedKey = encrypt(googleApiKey)
 
     // Use service client to update (bypasses RLS for update)
     const serviceClient = await createServiceClient()
     const { error: updateError } = await serviceClient
       .from('profiles')
-      .update(updateData)
+      .update({ google_api_key: encryptedKey })
       .eq('id', user.id)
 
     if (updateError) {
       console.error('Update error:', updateError)
-      return NextResponse.json({ error: 'Error al guardar keys' }, { status: 500 })
+      return NextResponse.json({ error: 'Error al guardar key' }, { status: 500 })
     }
 
     return NextResponse.json({ success: true })
