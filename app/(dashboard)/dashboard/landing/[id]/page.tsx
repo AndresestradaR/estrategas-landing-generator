@@ -255,9 +255,21 @@ export default function ProductGeneratePage() {
         toast.success('¡Sección generada!')
         // Refresh sections list
         fetchGeneratedSections()
-      } else if (data.enhancedPrompt) {
-        toast.error(data.error || 'No se pudo generar la imagen')
-        console.log('Enhanced prompt:', data.enhancedPrompt)
+      } else {
+        // Show error with tip if available
+        const errorMsg = data.error || 'No se pudo generar la imagen'
+        toast.error(errorMsg, { duration: 5000 })
+        if (data.tip) {
+          console.log('Tip:', data.tip)
+          toast(data.tip, { icon: '💡', duration: 7000 })
+        }
+        if (data.enhancedPrompt) {
+          console.log('Enhanced prompt:', data.enhancedPrompt)
+        }
+        // If image was generated but not saved, still refresh in case it partially worked
+        if (data.imageUrl) {
+          fetchGeneratedSections()
+        }
       }
     } catch (error: any) {
       toast.error(error.message || 'Error al generar sección')
