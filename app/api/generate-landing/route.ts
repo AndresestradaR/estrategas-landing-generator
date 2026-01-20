@@ -55,7 +55,7 @@ async function generateImageWithGemini(
   templateMimeType?: string,
   productPhotosBase64?: { data: string; mimeType: string }[]
 ): Promise<{ imageBase64: string; mimeType: string } | null> {
-  const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent'
+  const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent'
   
   // Build the parts array - ORDER MATTERS!
   const parts: any[] = []
@@ -373,7 +373,7 @@ ${creativeControls?.additionalInstructions || ''}`
         success: false,
         error: `Error generando imagen: ${imageError.message}`,
         enhancedPrompt: enhancedPrompt,
-        tip: 'Verifica que tu API key de Google tenga acceso a Gemini 2.5 Flash y facturación habilitada.'
+        tip: 'Verifica que tu API key de Google tenga acceso a Gemini y facturación habilitada.'
       }, { status: 200 })
     }
 
