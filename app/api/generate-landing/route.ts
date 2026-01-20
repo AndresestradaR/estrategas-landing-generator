@@ -284,7 +284,7 @@ ${creativeControls?.additionalInstructions || ''}`
       }, { status: 200 })
     }
 
-    // Save to database
+    // Save to database - IMPORTANT: Handle errors properly
     const serviceClient = await createServiceClient()
     const { data: insertedSection, error: insertError } = await serviceClient
       .from('landing_sections')
@@ -302,13 +302,30 @@ ${creativeControls?.additionalInstructions || ''}`
 
     if (insertError) {
       console.error('Database insert error:', insertError)
+      // Return error instead of silently failing
+      return NextResponse.json({ 
+        success: false,
+        error: `Error guardando sección: ${insertError.message}`,
+        imageUrl: generatedImageUrl, // Still provide the image
+        tip: 'La imagen se generó pero no se pudo guardar. Verifica la configuración de la base de datos.'
+      }, { status: 200 })
+    }
+
+    if (!insertedSection) {
+      console.error('No section returned after insert')
+      return NextResponse.json({ 
+        success: false,
+        error: 'Error guardando sección: no se retornó el registro insertado',
+        imageUrl: generatedImageUrl,
+        tip: 'La imagen se generó pero no se pudo guardar correctamente.'
+      }, { status: 200 })
     }
 
     return NextResponse.json({
       success: true,
       imageUrl: generatedImageUrl,
       enhancedPrompt: enhancedPrompt,
-      sectionId: insertedSection?.id,
+      sectionId: insertedSection.id,
     })
   } catch (error: any) {
     console.error('Generate landing API error:', error)
