@@ -8,20 +8,28 @@ import { cn } from '@/lib/utils/cn'
 import { 
   Sparkles, 
   LayoutDashboard, 
-  ImagePlus, 
+  ImageIcon,
+  LayoutTemplate,
   Images, 
   Settings, 
   LogOut,
   Menu,
-  X
+  Clock
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export const dynamic = 'force-dynamic'
 
-const navigation = [
+const mainNavigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'Generar', href: '/dashboard/generate', icon: ImagePlus },
+]
+
+const creatorNavigation = [
+  { name: 'Crea tu Banner', href: '/dashboard/banner', icon: ImageIcon, soon: true },
+  { name: 'Crea tu Landing', href: '/dashboard/landing', icon: LayoutTemplate },
+]
+
+const otherNavigation = [
   { name: 'Galería', href: '/dashboard/gallery', icon: Images },
   { name: 'Settings', href: '/dashboard/settings', icon: Settings },
 ]
@@ -41,6 +49,38 @@ export default function DashboardLayout({
     toast.success('Sesión cerrada')
     router.push('/login')
     router.refresh()
+  }
+
+  const NavLink = ({ item }: { item: typeof mainNavigation[0] & { soon?: boolean } }) => {
+    const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+    
+    if (item.soon) {
+      return (
+        <div className="flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium text-text-secondary/50 cursor-not-allowed">
+          <div className="flex items-center gap-3">
+            <item.icon className="w-5 h-5" />
+            {item.name}
+          </div>
+          <span className="text-xs bg-border/50 px-2 py-0.5 rounded text-text-secondary/70">Pronto</span>
+        </div>
+      )
+    }
+
+    return (
+      <Link
+        href={item.href}
+        onClick={() => setSidebarOpen(false)}
+        className={cn(
+          'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+          isActive 
+            ? 'bg-accent/10 text-accent' 
+            : 'text-text-secondary hover:text-text-primary hover:bg-border/50'
+        )}
+      >
+        <item.icon className="w-5 h-5" />
+        {item.name}
+      </Link>
+    )
   }
 
   return (
@@ -68,26 +108,37 @@ export default function DashboardLayout({
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 px-4 py-4 space-y-1">
-            {navigation.map((item) => {
-              const isActive = pathname === item.href
-              return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  onClick={() => setSidebarOpen(false)}
-                  className={cn(
-                    'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                    isActive 
-                      ? 'bg-accent/10 text-accent' 
-                      : 'text-text-secondary hover:text-text-primary hover:bg-border/50'
-                  )}
-                >
-                  <item.icon className="w-5 h-5" />
-                  {item.name}
-                </Link>
-              )
-            })}
+          <nav className="flex-1 px-4 py-4 space-y-6 overflow-y-auto">
+            {/* Main */}
+            <div className="space-y-1">
+              {mainNavigation.map((item) => (
+                <NavLink key={item.name} item={item} />
+              ))}
+            </div>
+
+            {/* Creator Tools */}
+            <div>
+              <p className="px-3 mb-2 text-xs font-semibold text-text-secondary/70 uppercase tracking-wider">
+                Herramientas
+              </p>
+              <div className="space-y-1">
+                {creatorNavigation.map((item) => (
+                  <NavLink key={item.name} item={item} />
+                ))}
+              </div>
+            </div>
+
+            {/* Other */}
+            <div>
+              <p className="px-3 mb-2 text-xs font-semibold text-text-secondary/70 uppercase tracking-wider">
+                Cuenta
+              </p>
+              <div className="space-y-1">
+                {otherNavigation.map((item) => (
+                  <NavLink key={item.name} item={item} />
+                ))}
+              </div>
+            </div>
           </nav>
 
           {/* Logout */}
@@ -118,7 +169,7 @@ export default function DashboardLayout({
               <Sparkles className="w-5 h-5 text-background" />
             </div>
           </div>
-          <div className="w-10" /> {/* Spacer */}
+          <div className="w-10" />
         </header>
 
         {/* Page content */}
