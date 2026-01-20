@@ -50,86 +50,78 @@ async function generateImageWithGemini(
     })
   }
   
-  // Build expert art director prompt
+  // Build visual-only art director prompt (NO text on image)
   const systemInstruction = {
-    role: "Expert E-commerce Art Director",
-    task: "Product Image Synthesis & Creative Fusion",
-    context: {
-      reference_style: "Use IMAGE 1 as style reference - analyze its quality, composition, and visual approach",
-      product_to_feature: {
-        name: productName,
-        source: "IMAGES 2+ show the actual product to feature",
-        details: creativeControls?.productDetails || "Analyze product from provided photos"
+    ROLE: "Expert E-commerce Art Director & Visual Synthesizer",
+    CRITICAL_INSTRUCTION: "Do NOT write any text, words, or letters on the image. Use the JSON values ONLY as creative direction to generate VISUAL elements. The final image must be TEXT-FREE.",
+    task: "Creative Visual Fusion based on Template Structure",
+    structure_guide: {
+      source_template: "Analyze IMAGE 1 for layout, composition, and visual style reference",
+      layout_rule: "Maintain similar composition structure - subject area and content/graphics area"
+    },
+    visual_elements_to_render: {
+      subject_person: {
+        description: creativeControls?.targetAvatar || "Person that matches the product's target demographic",
+        style: "Hyper-realistic photo, NOT cartoon, high energy expression, dynamic pose",
+        custom: creativeControls?.additionalInstructions || null
       },
-      composition: {
-        subject_placement: "Dynamic pose, professional positioning based on template style",
-        graphic_area: "Reserved space for floating icons and text overlay",
-        background: "Premium gradient or style matching product brand identity"
+      product_item: {
+        description: `A photorealistic ${productName}`,
+        source: "Use the EXACT product appearance from IMAGES 2+",
+        placement: "Held naturally by the person or integrated into the scene foreground",
+        detail: creativeControls?.productDetails || "Show product with hyper-realistic detail"
+      },
+      pain_point_icons: {
+        description: "A collection of 3D glassmorphism icons floating in the composition",
+        concept: creativeControls?.salesAngle || "Icons representing the product's key benefits",
+        style: "Glossy 3D glassmorphism with subtle glow effects",
+        composition_rule: "Arrange them in a visually appealing flow"
       }
     },
-    instructions: {
-      subject_handling: {
-        guideline: creativeControls?.targetAvatar || "Match model/subject to product's target demographic",
-        action: "Powerful, energetic pose conveying the product's benefits",
-        custom_instructions: creativeControls?.additionalInstructions || null
-      },
-      product_integration: {
-        item: productName,
-        placement: "Integrated in foreground or held by subject, naturally lit",
-        detail_level: "Hyper-realistic label and texture from provided product photos"
-      },
-      pain_point_visualization: {
-        concept: "Represent product benefits through 3D floating icons",
-        approach: creativeControls?.salesAngle || "Analyze product and create relevant benefit icons",
-        style: "Glossy 3D glassmorphism icons with subtle glow"
-      }
+    aesthetic: {
+      style: "Premium 8K advertising photography, vibrant colors, studio lighting",
+      mood: "Explosive energy, success, premium quality",
+      lighting: "Cinematic studio lighting with rim light to separate subject from background",
+      aspect_ratio: aspectRatio
     },
-    text_requirements: {
-      language: "Spanish",
-      style: "BOLD UPPERCASE headlines",
-      content: "Compelling sales copy for THIS specific product",
-      forbidden: ["spelling errors", "gibberish", "corrupted text", "blurry text"]
-    },
-    technical_requirements: {
-      aspect_ratio: aspectRatio,
-      lighting: "Cinematic studio lighting, rim light to separate subject from background",
-      quality: "8K resolution, commercial advertising photography, no distorted limbs",
-      negative_prompt: "blurry, low quality, distorted product labels, messy composition, spelling errors"
+    ABSOLUTE_FORBIDDEN: {
+      never_include: [
+        "ANY text or writing",
+        "ANY letters or words",
+        "Labels with text",
+        "Watermarks",
+        "Cartoon style",
+        "Blurry elements",
+        "Distorted faces or limbs"
+      ]
     }
   }
 
-  const prompt = `You are an EXPERT E-COMMERCE ART DIRECTOR.
+  const prompt = `You are an EXPERT E-COMMERCE ART DIRECTOR creating a VISUAL-ONLY banner.
 
-SYSTEM INSTRUCTION:
+CRITICAL: DO NOT RENDER ANY TEXT ON THE IMAGE. No words, no letters, no writing. ONLY visual elements.
+
+CREATIVE DIRECTION:
 ${JSON.stringify(systemInstruction, null, 2)}
 
-IMAGE ROLES:
-- IMAGE 1: Style reference template - use for composition, quality level, visual approach
-- IMAGES 2+: The ACTUAL PRODUCT to feature - show this product with hyper-realistic detail
+IMAGE INPUTS:
+- IMAGE 1: Template for STYLE and COMPOSITION reference only
+- IMAGES 2+: The ACTUAL PRODUCT - render this with hyper-realistic detail
 
-YOUR TASK:
-1. Analyze the template style (image 1)
-2. Feature the product from images 2+ as the STAR
-3. Create floating 3D icons that represent the product's BENEFITS
-4. Use cinematic lighting and premium composition
-5. Write Spanish text that SELLS this product
+WHAT TO CREATE:
+1. A dynamic subject/person matching the target customer
+2. The product from images 2+ shown prominently with realistic detail
+3. Floating 3D glassmorphism icons representing product benefits
+4. Premium gradient background
+5. Cinematic lighting
 
-${creativeControls?.additionalInstructions ? `
-CRITICAL - FOLLOW THESE SPECIFIC INSTRUCTIONS:
-${creativeControls.additionalInstructions}
-` : ''}
+WHAT TO ABSOLUTELY AVOID:
+- ANY text, words, letters, or writing
+- Cartoon or illustrated style
+- Blurry or low quality elements
+- Distorted faces or anatomy
 
-${creativeControls?.salesAngle ? `
-SALES ANGLE TO EMPHASIZE:
-${creativeControls.salesAngle}
-` : ''}
-
-${creativeControls?.targetAvatar ? `
-TARGET CUSTOMER (match visuals to this person):
-${creativeControls.targetAvatar}
-` : ''}
-
-Create a banner worthy of a premium fitness/lifestyle brand campaign.`
+The user will add text later in editing software. Your job is to create a stunning TEXT-FREE visual composition.`
 
   parts.push({ text: prompt })
 
