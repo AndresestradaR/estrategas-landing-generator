@@ -82,6 +82,7 @@ export default function ProductGeneratePage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isGenerating, setIsGenerating] = useState(false)
   const [isSharing, setIsSharing] = useState(false)
+  const [isEnhancing, setIsEnhancing] = useState(false)
   
   // Template state
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
@@ -276,6 +277,53 @@ export default function ProductGeneratePage() {
       toast.error(error.message || 'Error al generar sección')
     } finally {
       setIsGenerating(false)
+    }
+  }
+
+  const handleEnhanceWithAI = async () => {
+    if (!selectedTemplate && !uploadedTemplate) {
+      toast.error('Primero selecciona una plantilla')
+      return
+    }
+    if (!productPhotos.some(p => p !== null)) {
+      toast.error('Primero sube al menos una foto del producto')
+      return
+    }
+
+    setIsEnhancing(true)
+    toast.loading('Analizando con IA...', { id: 'enhance' })
+
+    try {
+      const response = await fetch('/api/enhance-prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          templateUrl: selectedTemplate?.image_url || uploadedTemplate,
+          productPhotos: productPhotos.filter(p => p !== null),
+          productName: product?.name,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Error al mejorar')
+      }
+
+      // Auto-fill creative controls
+      setCreativeControls({
+        productDetails: data.suggestions.productDetails || '',
+        salesAngle: data.suggestions.salesAngle || '',
+        targetAvatar: data.suggestions.targetAvatar || '',
+        additionalInstructions: data.suggestions.additionalInstructions || '',
+      })
+      setShowCreativeControls(true)
+
+      toast.success('¡Campos completados con IA!', { id: 'enhance' })
+    } catch (error: any) {
+      toast.error(error.message || 'Error al mejorar', { id: 'enhance' })
+    } finally {
+      setIsEnhancing(false)
     }
   }
 
@@ -568,7 +616,18 @@ export default function ProductGeneratePage() {
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-text-secondary">Personaliza tu sección</span>
+              <button
+                onClick={handleEnhanceWithAI}
+                disabled={isEnhancing}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/10 hover:bg-accent/20 text-accent rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                {isEnhancing ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Sparkles className="w-4 h-4" />
+                )}
+                Mejorar con IA
+              </button>
               <button
                 onClick={() => setShowCreativeControls(!showCreativeControls)}
                 className={`relative w-12 h-6 rounded-full transition-colors ${
