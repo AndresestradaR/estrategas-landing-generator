@@ -15,7 +15,14 @@ import {
   ChevronRight,
   Mic,
   ArrowLeft,
-  Check
+  Check,
+  Download,
+  Eye,
+  Edit3,
+  Trash2,
+  Share2,
+  MessageCircle,
+  ImagePlus
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -35,11 +42,10 @@ const TEMPLATE_CATEGORIES = [
 ]
 
 const OUTPUT_SIZES = [
-  { id: 'original', name: 'Tamaño Original', dimensions: 'Según plantilla' },
-  { id: 'horizontal', name: 'Horizontal (16:9)', dimensions: '1920 x 1080 px' },
-  { id: 'vertical', name: 'Vertical (9:16)', dimensions: '1080 x 1920 px' },
-  { id: 'square', name: 'Cuadrada (1:1)', dimensions: '1080 x 1080 px' },
-  { id: 'portrait', name: 'Retrato (4:5)', dimensions: '1080 x 1350 px' },
+  { id: '1080x1920', name: 'Vertical (9:16)', dimensions: '1080 x 1920 px' },
+  { id: '1080x1080', name: 'Cuadrada (1:1)', dimensions: '1080 x 1080 px' },
+  { id: '1920x1080', name: 'Horizontal (16:9)', dimensions: '1920 x 1080 px' },
+  { id: '1080x1350', name: 'Retrato (4:5)', dimensions: '1080 x 1350 px' },
 ]
 
 interface Product {
@@ -54,6 +60,17 @@ interface Template {
   image_url: string
   category: string
   dimensions?: string
+}
+
+interface GeneratedSection {
+  id: string
+  template_id?: string
+  generated_image_url: string
+  prompt_used: string
+  output_size: string
+  status: string
+  created_at: string
+  template?: Template
 }
 
 export default function ProductGeneratePage() {
@@ -88,16 +105,29 @@ export default function ProductGeneratePage() {
     additionalInstructions: '',
   })
 
-  // Generated result
-  const [generatedImage, setGeneratedImage] = useState<string | null>(null)
+  // Generated sections history
+  const [generatedSections, setGeneratedSections] = useState<GeneratedSection[]>([])
+  const [isLoadingSections, setIsLoadingSections] = useState(true)
+
+  // Section detail modal
+  const [selectedSection, setSelectedSection] = useState<GeneratedSection | null>(null)
+  const [showSectionModal, setShowSectionModal] = useState(false)
+
+  // Edit modal
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editInstruction, setEditInstruction] = useState('')
+  const [editReferenceImage, setEditReferenceImage] = useState<string | null>(null)
+  const [isEditing, setIsEditing] = useState(false)
 
   const templateInputRef = useRef<HTMLInputElement>(null)
   const photoInputRefs = [useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null)]
+  const editImageRef = useRef<HTMLInputElement>(null)
   const categoryScrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     fetchProduct()
     fetchTemplates()
+    fetchGeneratedSections()
   }, [productId])
 
   const fetchProduct = async () => {
@@ -127,6 +157,20 @@ export default function ProductGeneratePage() {
       }
     } catch (error) {
       console.error('Error fetching templates:', error)
+    }
+  }
+
+  const fetchGeneratedSections = async () => {
+    try {
+      const response = await fetch(`/api/products/${productId}/sections`)
+      const data = await response.json()
+      if (data.sections) {
+        setGeneratedSections(data.sections)
+      }
+    } catch (error) {
+      console.error('Error fetching sections:', error)
+    } finally {
+      setIsLoadingSections(false)
     }
   }
 
@@ -185,7 +229,6 @@ export default function ProductGeneratePage() {
     }
 
     setIsGenerating(true)
-    setGeneratedImage(null)
     
     try {
       const response = await fetch('/api/generate-landing', {
@@ -208,14 +251,108 @@ export default function ProductGeneratePage() {
         throw new Error(data.error || 'Error al generar')
       }
 
-      setGeneratedImage(data.imageUrl)
-      toast.success('¡Sección generada!')
+      if (data.success && data.imageUrl) {
+        toast.success('¡Sección generada!')
+        // Refresh sections list
+        fetchGeneratedSections()
+      } else if (data.enhancedPrompt) {
+        toast.error(data.error || 'No se pudo generar la imagen')
+        console.log('Enhanced prompt:', data.enhancedPrompt)
+      }
     } catch (error: any) {
       toast.error(error.message || 'Error al generar sección')
     } finally {
       setIsGenerating(false)
     }
   }
+
+  const handleDownload = async (imageUrl: string, quality: '2k' | 'optimized') => {
+    try {
+      const link = document.createElement('a')
+      link.href = imageUrl
+      link.download = `${product?.name}-${quality === '2k' ? '2K' : 'optimized'}-${Date.now()}.png`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      toast.success(`Descargando en calidad ${quality === '2k' ? '2K' : 'optimizada'}`)
+    } catch (error) {
+      toast.error('Error al descargar')
+    }
+  }
+
+  const handleShareWhatsApp = (section: GeneratedSection) => {
+    const text = encodeURIComponent(`¡Mira esta sección de landing que generé con IA para ${product?.name}!`)
+    window.open(`https://wa.me/?text=${text}`, '_blank')
+    toast.success('Abriendo WhatsApp...')
+  }
+
+  const handleEdit = async () => {
+    if (!selectedSection || !editInstruction.trim()) {
+      toast.error('Escribe una instrucción de edición')
+      return
+    }
+
+    setIsEditing(true)
+    
+    try {
+      const response = await fetch('/api/edit-section', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sectionId: selectedSection.id,
+          originalImageUrl: selectedSection.generated_image_url,
+          editInstruction,
+          referenceImageUrl: editReferenceImage,
+          productName: product?.name,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (data.success && data.imageUrl) {
+        toast.success('¡Sección editada!')
+        setShowEditModal(false)
+        setShowSectionModal(false)
+        setEditInstruction('')
+        setEditReferenceImage(null)
+        fetchGeneratedSections()
+      } else {
+        throw new Error(data.error || 'Error al editar')
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Error al editar sección')
+    } finally {
+      setIsEditing(false)
+    }
+  }
+
+  const handleDeleteSection = async (sectionId: string) => {
+    if (!confirm('¿Eliminar esta sección?')) return
+
+    try {
+      const response = await fetch(`/api/sections/${sectionId}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        throw new Error('Error al eliminar')
+      }
+
+      toast.success('Sección eliminada')
+      setShowSectionModal(false)
+      fetchGeneratedSections()
+    } catch (error) {
+      toast.error('Error al eliminar sección')
+    }
+  }
+
+  // Group sections by category
+  const sectionsByCategory = generatedSections.reduce((acc, section) => {
+    const category = section.template?.category || 'hero'
+    if (!acc[category]) acc[category] = []
+    acc[category].push(section)
+    return acc
+  }, {} as Record<string, GeneratedSection[]>)
 
   if (isLoading) {
     return (
@@ -408,21 +545,13 @@ export default function ProductGeneratePage() {
                   </label>
                   <span className="text-xs text-text-secondary">Máx. 500 caracteres</span>
                 </div>
-                <div className="relative">
-                  <textarea
-                    placeholder="Describe las características, beneficios y detalles importantes del producto..."
-                    value={creativeControls.productDetails}
-                    onChange={(e) => setCreativeControls({ ...creativeControls, productDetails: e.target.value.slice(0, 500) })}
-                    className="w-full px-4 py-3 pr-12 bg-background border border-border rounded-xl text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent resize-none"
-                    rows={2}
-                  />
-                  <button className="absolute right-3 top-3 p-1.5 text-accent hover:bg-accent/10 rounded-lg transition-colors">
-                    <Mic className="w-4 h-4" />
-                  </button>
-                </div>
-                <p className="text-xs text-text-secondary mt-1">
-                  Incluye información sobre beneficios, ingredientes, usos, resultados, etc.
-                </p>
+                <textarea
+                  placeholder="Describe las características, beneficios y detalles importantes del producto..."
+                  value={creativeControls.productDetails}
+                  onChange={(e) => setCreativeControls({ ...creativeControls, productDetails: e.target.value.slice(0, 500) })}
+                  className="w-full px-4 py-3 bg-background border border-border rounded-xl text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent resize-none"
+                  rows={2}
+                />
               </div>
 
               {/* Sales Angle */}
@@ -431,20 +560,14 @@ export default function ProductGeneratePage() {
                   <label className="text-sm font-medium text-text-primary flex items-center gap-2">
                     📈 Ángulo de Venta
                   </label>
-                  <span className="text-xs text-text-secondary">Máx. 500 caracteres</span>
                 </div>
-                <div className="relative">
-                  <textarea
-                    placeholder="Ejemplo: Mujeres en transición de menopausia buscando alivio natural"
-                    value={creativeControls.salesAngle}
-                    onChange={(e) => setCreativeControls({ ...creativeControls, salesAngle: e.target.value.slice(0, 500) })}
-                    className="w-full px-4 py-3 pr-12 bg-background border border-border rounded-xl text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent resize-none"
-                    rows={2}
-                  />
-                  <button className="absolute right-3 top-3 p-1.5 text-accent hover:bg-accent/10 rounded-lg transition-colors">
-                    <Mic className="w-4 h-4" />
-                  </button>
-                </div>
+                <textarea
+                  placeholder="Ejemplo: Potenciador de testosterona para hombres fitness"
+                  value={creativeControls.salesAngle}
+                  onChange={(e) => setCreativeControls({ ...creativeControls, salesAngle: e.target.value.slice(0, 500) })}
+                  className="w-full px-4 py-3 bg-background border border-border rounded-xl text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent resize-none"
+                  rows={2}
+                />
               </div>
 
               {/* Target Avatar */}
@@ -453,20 +576,14 @@ export default function ProductGeneratePage() {
                   <label className="text-sm font-medium text-text-primary flex items-center gap-2">
                     🎯 Avatar de Cliente Ideal
                   </label>
-                  <span className="text-xs text-text-secondary">Máx. 500 caracteres</span>
                 </div>
-                <div className="relative">
-                  <textarea
-                    placeholder="Ejemplo: Mujeres 45-55 años, preocupadas por su salud"
-                    value={creativeControls.targetAvatar}
-                    onChange={(e) => setCreativeControls({ ...creativeControls, targetAvatar: e.target.value.slice(0, 500) })}
-                    className="w-full px-4 py-3 pr-12 bg-background border border-border rounded-xl text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent resize-none"
-                    rows={2}
-                  />
-                  <button className="absolute right-3 top-3 p-1.5 text-accent hover:bg-accent/10 rounded-lg transition-colors">
-                    <Mic className="w-4 h-4" />
-                  </button>
-                </div>
+                <textarea
+                  placeholder="Ejemplo: Hombres 25-45 años, van al gimnasio, quieren aumentar masa muscular"
+                  value={creativeControls.targetAvatar}
+                  onChange={(e) => setCreativeControls({ ...creativeControls, targetAvatar: e.target.value.slice(0, 500) })}
+                  className="w-full px-4 py-3 bg-background border border-border rounded-xl text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent resize-none"
+                  rows={2}
+                />
               </div>
 
               {/* Additional Instructions */}
@@ -475,20 +592,14 @@ export default function ProductGeneratePage() {
                   <label className="text-sm font-medium text-text-primary flex items-center gap-2">
                     💬 Instrucciones Adicionales
                   </label>
-                  <span className="text-xs text-text-secondary">Máx. 500 caracteres</span>
                 </div>
-                <div className="relative">
-                  <textarea
-                    placeholder="Cualquier instrucción específica para la generación..."
-                    value={creativeControls.additionalInstructions}
-                    onChange={(e) => setCreativeControls({ ...creativeControls, additionalInstructions: e.target.value.slice(0, 500) })}
-                    className="w-full px-4 py-3 pr-12 bg-background border border-border rounded-xl text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent resize-none"
-                    rows={2}
-                  />
-                  <button className="absolute right-3 top-3 p-1.5 text-accent hover:bg-accent/10 rounded-lg transition-colors">
-                    <Mic className="w-4 h-4" />
-                  </button>
-                </div>
+                <textarea
+                  placeholder="Cualquier instrucción específica para la generación..."
+                  value={creativeControls.additionalInstructions}
+                  onChange={(e) => setCreativeControls({ ...creativeControls, additionalInstructions: e.target.value.slice(0, 500) })}
+                  className="w-full px-4 py-3 bg-background border border-border rounded-xl text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent resize-none"
+                  rows={2}
+                />
               </div>
             </div>
           )}
@@ -505,35 +616,62 @@ export default function ProductGeneratePage() {
         </Button>
 
         <p className="text-center text-sm text-text-secondary mt-3">
-          1 de 5 secciones utilizadas este periodo
+          {generatedSections.length} de 5 secciones utilizadas este periodo
         </p>
       </Card>
 
-      {/* Generated Result */}
-      {generatedImage && (
-        <Card className="p-6">
-          <h3 className="text-lg font-semibold text-text-primary mb-4">Resultado Generado</h3>
-          <div className="rounded-xl overflow-hidden border border-border">
-            <img src={generatedImage} alt="Generado" className="w-full" />
+      {/* Generated Sections History */}
+      <div className="mb-6">
+        <h2 className="text-xl font-bold text-text-primary mb-4">Secciones Generadas</h2>
+        
+        {isLoadingSections ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-6 h-6 text-accent animate-spin" />
           </div>
-          <div className="flex gap-3 mt-4">
-            <Button variant="secondary" className="flex-1">
-              Regenerar
-            </Button>
-            <Button 
-              className="flex-1"
-              onClick={() => {
-                const link = document.createElement('a')
-                link.href = generatedImage
-                link.download = `${product?.name}-landing.png`
-                link.click()
-              }}
-            >
-              Descargar
-            </Button>
+        ) : generatedSections.length === 0 ? (
+          <Card className="p-8 text-center">
+            <ImageIcon className="w-12 h-12 text-accent/30 mx-auto mb-3" />
+            <p className="text-text-secondary">Aún no has generado secciones</p>
+            <p className="text-sm text-text-secondary/70">Selecciona una plantilla y genera tu primera sección</p>
+          </Card>
+        ) : (
+          <div className="space-y-6">
+            {Object.entries(sectionsByCategory).map(([category, sections]) => (
+              <div key={category}>
+                <div className="flex items-center gap-2 mb-3">
+                  <h3 className="text-lg font-semibold text-text-primary capitalize">{category}</h3>
+                  <div className="h-px flex-1 bg-border" />
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                  {sections.map((section) => (
+                    <button
+                      key={section.id}
+                      onClick={() => {
+                        setSelectedSection(section)
+                        setShowSectionModal(true)
+                      }}
+                      className="group relative aspect-[9/16] rounded-xl overflow-hidden border border-border hover:border-accent/50 transition-all"
+                    >
+                      <img
+                        src={section.generated_image_url}
+                        alt="Sección generada"
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                      <div className="absolute bottom-2 left-2 right-2 flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span className="text-xs text-white bg-black/50 px-2 py-1 rounded">
+                          <Eye className="w-3 h-3 inline mr-1" />
+                          Ver
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
-        </Card>
-      )}
+        )}
+      </div>
 
       {/* Template Gallery Modal */}
       {showTemplateGallery && (
@@ -599,7 +737,6 @@ export default function ProductGeneratePage() {
                 <div className="text-center py-12">
                   <LayoutTemplate className="w-12 h-12 text-accent/30 mx-auto mb-3" />
                   <p className="text-text-secondary">No hay plantillas en esta categoría aún</p>
-                  <p className="text-sm text-text-secondary/70 mt-1">Pronto agregaremos más diseños</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
@@ -655,6 +792,225 @@ export default function ProductGeneratePage() {
                   <Check className="w-4 h-4" />
                   Usar Este Template
                 </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Section Detail Modal */}
+      {showSectionModal && selectedSection && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div 
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setShowSectionModal(false)}
+          />
+          <div className="relative w-full max-w-5xl max-h-[90vh] bg-surface rounded-2xl overflow-hidden z-10 flex">
+            {/* Left side - Options */}
+            <div className="w-80 border-r border-border p-6 flex flex-col">
+              <h2 className="text-xl font-bold text-text-primary mb-6">Sección generada</h2>
+              
+              <div className="space-y-3 flex-1">
+                {/* Download 2K */}
+                <button
+                  onClick={() => handleDownload(selectedSection.generated_image_url, '2k')}
+                  className="w-full flex items-center gap-3 px-4 py-3 bg-background border border-border rounded-xl hover:border-accent/50 transition-colors"
+                >
+                  <Download className="w-5 h-5 text-text-secondary" />
+                  <span className="text-text-primary">Descargar en 2K</span>
+                </button>
+
+                {/* Download Optimized */}
+                <button
+                  onClick={() => handleDownload(selectedSection.generated_image_url, 'optimized')}
+                  className="w-full flex items-center gap-3 px-4 py-3 bg-background border border-border rounded-xl hover:border-accent/50 transition-colors"
+                >
+                  <Download className="w-5 h-5 text-text-secondary" />
+                  <span className="text-text-primary">Descargar optimizada</span>
+                </button>
+
+                {/* Edit Section */}
+                <button
+                  onClick={() => setShowEditModal(true)}
+                  className="w-full flex items-center gap-3 px-4 py-3 bg-background border border-border rounded-xl hover:border-accent/50 transition-colors"
+                >
+                  <Edit3 className="w-5 h-5 text-text-secondary" />
+                  <span className="text-text-primary">Editar Sección</span>
+                </button>
+
+                {/* Share WhatsApp */}
+                <button
+                  onClick={() => handleShareWhatsApp(selectedSection)}
+                  className="w-full flex items-center gap-3 px-4 py-3 bg-green-500/10 border border-green-500/30 rounded-xl hover:bg-green-500/20 transition-colors"
+                >
+                  <MessageCircle className="w-5 h-5 text-green-500" />
+                  <span className="text-green-500">Compartir por WhatsApp</span>
+                </button>
+              </div>
+
+              {/* Reference Template */}
+              {selectedSection.template && (
+                <div className="mt-6 pt-6 border-t border-border">
+                  <p className="text-sm text-text-secondary mb-2">Referencia</p>
+                  <div className="aspect-[3/4] rounded-lg overflow-hidden border border-border">
+                    <img
+                      src={selectedSection.template.image_url}
+                      alt="Template"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Delete button */}
+              <button
+                onClick={() => handleDeleteSection(selectedSection.id)}
+                className="mt-4 flex items-center justify-center gap-2 text-error hover:bg-error/10 py-2 rounded-lg transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span className="text-sm">Eliminar sección</span>
+              </button>
+            </div>
+
+            {/* Right side - Image Preview */}
+            <div className="flex-1 p-6 flex flex-col">
+              <div className="flex items-center justify-between mb-4">
+                <span className="px-3 py-1 bg-accent/10 text-accent rounded-full text-sm font-medium">
+                  {selectedSection.template?.category || 'Hero'} Section
+                </span>
+                <button
+                  onClick={() => setShowSectionModal(false)}
+                  className="p-2 text-text-secondary hover:text-text-primary hover:bg-border/50 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <div className="flex-1 flex items-center justify-center bg-background rounded-xl overflow-hidden">
+                <img
+                  src={selectedSection.generated_image_url}
+                  alt="Sección generada"
+                  className="max-w-full max-h-full object-contain"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {showEditModal && selectedSection && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div 
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setShowEditModal(false)}
+          />
+          <div className="relative w-full max-w-5xl max-h-[90vh] bg-surface rounded-2xl overflow-hidden z-10 flex">
+            {/* Left side - Edit Form */}
+            <div className="w-80 border-r border-border p-6 flex flex-col">
+              <h2 className="text-xl font-bold text-text-primary mb-2">Sección generada</h2>
+              
+              {/* Edit Instruction */}
+              <div className="mb-4">
+                <label className="text-sm font-medium text-text-primary mb-1.5 block">
+                  Instrucción de edición:
+                </label>
+                <textarea
+                  placeholder="Describe cómo quieres editar la sección..."
+                  value={editInstruction}
+                  onChange={(e) => setEditInstruction(e.target.value)}
+                  className="w-full px-4 py-3 bg-background border border-border rounded-xl text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent resize-none"
+                  rows={4}
+                />
+              </div>
+
+              {/* Reference Image Upload */}
+              <div className="mb-6">
+                <label className="text-sm font-medium text-text-primary mb-1.5 block">
+                  Imagen de referencia (opcional):
+                </label>
+                <div className="border-2 border-dashed border-border rounded-xl p-4 text-center">
+                  {editReferenceImage ? (
+                    <div className="relative">
+                      <img
+                        src={editReferenceImage}
+                        alt="Referencia"
+                        className="w-full aspect-video object-contain rounded-lg"
+                      />
+                      <button
+                        onClick={() => setEditReferenceImage(null)}
+                        className="absolute top-2 right-2 p-1 bg-background/80 rounded hover:bg-error/20 hover:text-error"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => editImageRef.current?.click()}
+                      className="flex flex-col items-center py-4 hover:text-accent transition-colors"
+                    >
+                      <Upload className="w-8 h-8 text-text-secondary/40 mb-2" />
+                      <span className="text-sm text-text-secondary">Subir una imagen</span>
+                    </button>
+                  )}
+                  <input
+                    ref={editImageRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) {
+                        const reader = new FileReader()
+                        reader.onloadend = () => {
+                          setEditReferenceImage(reader.result as string)
+                        }
+                        reader.readAsDataURL(file)
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 mt-auto">
+                <Button
+                  variant="secondary"
+                  className="flex-1"
+                  onClick={() => setShowEditModal(false)}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={handleEdit}
+                  isLoading={isEditing}
+                >
+                  Aplicar Edición
+                </Button>
+              </div>
+            </div>
+
+            {/* Right side - Image Preview */}
+            <div className="flex-1 p-6 flex flex-col">
+              <div className="flex items-center justify-between mb-4">
+                <span className="px-3 py-1 bg-accent/10 text-accent rounded-full text-sm font-medium">
+                  {selectedSection.template?.category || 'Hero'} Section
+                </span>
+                <button
+                  onClick={() => setShowEditModal(false)}
+                  className="p-2 text-text-secondary hover:text-text-primary hover:bg-border/50 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <div className="flex-1 flex items-center justify-center bg-background rounded-xl overflow-hidden">
+                <img
+                  src={selectedSection.generated_image_url}
+                  alt="Sección generada"
+                  className="max-w-full max-h-full object-contain"
+                />
               </div>
             </div>
           </div>
