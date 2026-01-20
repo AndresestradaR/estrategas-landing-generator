@@ -424,6 +424,14 @@ export default function ProductGeneratePage() {
     }
     if (!confirm('¿Eliminar esta sección?')) return
 
+    // Save previous state for rollback
+    const previousSections = generatedSections
+
+    // Optimistic update - remove from UI immediately
+    setGeneratedSections(sections => sections.filter(s => s.id !== sectionId))
+    setShowSectionModal(false)
+    toast.success('Sección eliminada')
+
     try {
       const response = await fetch(`/api/sections/${sectionId}`, {
         method: 'DELETE',
@@ -432,11 +440,9 @@ export default function ProductGeneratePage() {
       if (!response.ok) {
         throw new Error('Error al eliminar')
       }
-
-      toast.success('Sección eliminada')
-      setShowSectionModal(false)
-      fetchGeneratedSections()
     } catch (error) {
+      // Rollback on error
+      setGeneratedSections(previousSections)
       toast.error('Error al eliminar sección')
     }
   }

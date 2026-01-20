@@ -13,12 +13,11 @@ export async function DELETE(
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    // Await params in Next.js 14+
     const { sectionId } = await params
 
     // Use service client for delete to bypass RLS issues
     const serviceClient = await createServiceClient()
-    
+
     // First verify the section belongs to the user
     const { data: section } = await serviceClient
       .from('landing_sections')
@@ -60,7 +59,6 @@ export async function GET(
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    // Await params in Next.js 14+
     const { sectionId } = await params
 
     const { data: section, error } = await supabase
