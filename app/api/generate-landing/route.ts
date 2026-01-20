@@ -51,32 +51,42 @@ async function generateImageWithGemini(
   }
   
   // Build prompt
-  const hasCreativeControls = creativeControls?.productDetails || creativeControls?.salesAngle || creativeControls?.targetAvatar
-  
-  let prompt = `Use the first image as a DESIGN TEMPLATE/REFERENCE. Recreate this banner design but featuring the product shown in the subsequent images.
+  let prompt = `You are creating a PROFESSIONAL E-COMMERCE BANNER.
+
+=== CRITICAL: IMAGE ROLES ===
+- IMAGE 1 (First image): This is ONLY a DESIGN TEMPLATE for layout/style reference
+- IMAGES 2+ (Subsequent images): These show THE ACTUAL PRODUCT to feature
+
+=== ABSOLUTE REQUIREMENTS ===
+
+1. **PRODUCT REPLACEMENT (MANDATORY)**:
+   - COMPLETELY IGNORE the product shown in the template (Image 1)
+   - The ONLY product in your output must be from Images 2+
+   - Show the user's product PROMINENTLY and CLEARLY
+   - Preserve the product's ACTUAL packaging, labels, and branding exactly as shown
+   - DO NOT invent or modify the product appearance
+
+2. **DESIGN ELEMENTS**:
+   - Copy the LAYOUT STRUCTURE from the template (positions, sections, decorative elements)
+   - Adapt the COLOR SCHEME to complement the user's product packaging
+   - Keep similar poses/models if present, but with the NEW product
+
+3. **TEXT REQUIREMENTS (VERY IMPORTANT)**:
+   - ALL text must be in SPANISH
+   - Use LARGE, BOLD, HIGHLY READABLE fonts
+   - Headlines: UPPERCASE, minimum 72pt equivalent size
+   - Subtext: Clear and legible, minimum 36pt equivalent
+   - NO spelling errors, NO gibberish text
+   - Text must have good contrast against background
 
 === PRODUCT INFO ===
 Product Name: ${productName}
-${creativeControls?.productDetails ? `Product Details: ${creativeControls.productDetails}` : ''}
+${creativeControls?.productDetails ? `Details: ${creativeControls.productDetails}` : ''}
 ${creativeControls?.salesAngle ? `Sales Angle: ${creativeControls.salesAngle}` : ''}
-${creativeControls?.targetAvatar ? `Target Customer: ${creativeControls.targetAvatar}` : ''}
-${creativeControls?.additionalInstructions ? `Special Instructions: ${creativeControls.additionalInstructions}` : ''}
+${creativeControls?.targetAvatar ? `Target: ${creativeControls.targetAvatar}` : ''}
+${creativeControls?.additionalInstructions ? `Instructions: ${creativeControls.additionalInstructions}` : ''}
 
-=== INSTRUCTIONS ===
-
-1. PRODUCT: Replace the product in the template with the user's product from images 2+. Show it clearly with its actual label and branding.
-
-2. LAYOUT: Keep the same general layout, poses, and decorative elements from the template.
-
-3. COLORS: Adapt colors to complement the product packaging.
-
-4. TEXT (SPANISH):
-   - Generate SHORT, POWERFUL marketing text in Spanish
-   - UPPERCASE headlines
-   - Text must be CLEAR, READABLE, NO spelling errors
-   ${hasCreativeControls ? `- Use the product details and sales angle provided` : `- Base text on the product photos`}
-
-Create a professional e-commerce banner ready for a real landing page.`
+Generate a PROFESSIONAL, SALES-READY banner. The product from Images 2+ must be the STAR of the design.`
 
   parts.push({ text: prompt })
 
