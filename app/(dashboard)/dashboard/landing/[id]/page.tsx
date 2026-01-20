@@ -247,7 +247,19 @@ export default function ProductGeneratePage() {
           templateUrl: selectedTemplate?.image_url || uploadedTemplate,
           productPhotos: productPhotos.filter(p => p !== null),
           outputSize: selectedSize.id,
-          creativeControls: showCreativeControls ? creativeControls : null,
+          creativeControls: {
+            // Always send price fields
+            priceAfter: creativeControls.priceAfter,
+            priceBefore: creativeControls.priceBefore,
+            currencySymbol: creativeControls.currencySymbol,
+            // Only send other fields if creative controls are enabled
+            ...(showCreativeControls ? {
+              productDetails: creativeControls.productDetails,
+              salesAngle: creativeControls.salesAngle,
+              targetAvatar: creativeControls.targetAvatar,
+              additionalInstructions: creativeControls.additionalInstructions,
+            } : {}),
+          },
         }),
       })
 
@@ -314,13 +326,18 @@ export default function ProductGeneratePage() {
         throw new Error(data.error || 'Error al mejorar')
       }
 
-      // Auto-fill creative controls
-      setCreativeControls({
+      // Auto-fill creative controls (preserve price fields)
+      setCreativeControls(prev => ({
+        ...prev,
         productDetails: data.suggestions.productDetails || '',
         salesAngle: data.suggestions.salesAngle || '',
         targetAvatar: data.suggestions.targetAvatar || '',
         additionalInstructions: data.suggestions.additionalInstructions || '',
-      })
+        // Preserve user's price fields
+        priceAfter: prev.priceAfter,
+        priceBefore: prev.priceBefore,
+        currencySymbol: prev.currencySymbol,
+      }))
       setShowCreativeControls(true)
 
       toast.success('¡Campos completados con IA!', { id: 'enhance' })
@@ -721,50 +738,50 @@ export default function ProductGeneratePage() {
                   rows={2}
                 />
               </div>
-
-              {/* Precios para el Banner */}
-              <div className="border-t border-border pt-4 mt-4">
-                <label className="text-sm font-medium text-text-primary flex items-center gap-2 mb-3">
-                  💰 Precios del Banner
-                </label>
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <label className="text-xs text-text-secondary mb-1 block">Símbolo</label>
-                    <input
-                      type="text"
-                      placeholder="$"
-                      value={creativeControls.currencySymbol}
-                      onChange={(e) => setCreativeControls({ ...creativeControls, currencySymbol: e.target.value.slice(0, 5) })}
-                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-text-primary text-center focus:outline-none focus:ring-2 focus:ring-accent/50"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-text-secondary mb-1 block">Precio Oferta</label>
-                    <input
-                      type="text"
-                      placeholder="99.900"
-                      value={creativeControls.priceAfter}
-                      onChange={(e) => setCreativeControls({ ...creativeControls, priceAfter: e.target.value.slice(0, 15) })}
-                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/50"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-text-secondary mb-1 block">Precio Antes</label>
-                    <input
-                      type="text"
-                      placeholder="149.900"
-                      value={creativeControls.priceBefore}
-                      onChange={(e) => setCreativeControls({ ...creativeControls, priceBefore: e.target.value.slice(0, 15) })}
-                      className="w-full px-3 py-2 bg-background border border-border rounded-lg text-text-primary line-through focus:outline-none focus:ring-2 focus:ring-accent/50"
-                    />
-                  </div>
-                </div>
-                <p className="text-xs text-text-secondary mt-2">
-                  Estos precios aparecerán exactamente como los escribas en el banner
-                </p>
-              </div>
             </div>
           )}
+        </div>
+
+        {/* Precios del Banner - SIEMPRE VISIBLE */}
+        <div className="border border-accent/30 bg-accent/5 rounded-xl p-4 mb-6">
+          <label className="text-sm font-medium text-text-primary flex items-center gap-2 mb-3">
+            💰 Precios del Banner <span className="text-xs text-accent font-normal">(Recomendado)</span>
+          </label>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="text-xs text-text-secondary mb-1 block">Símbolo</label>
+              <input
+                type="text"
+                placeholder="$"
+                value={creativeControls.currencySymbol}
+                onChange={(e) => setCreativeControls({ ...creativeControls, currencySymbol: e.target.value.slice(0, 5) })}
+                className="w-full px-3 py-2 bg-background border border-border rounded-lg text-text-primary text-center focus:outline-none focus:ring-2 focus:ring-accent/50"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-text-secondary mb-1 block">Precio Oferta</label>
+              <input
+                type="text"
+                placeholder="99.900"
+                value={creativeControls.priceAfter}
+                onChange={(e) => setCreativeControls({ ...creativeControls, priceAfter: e.target.value.slice(0, 15) })}
+                className="w-full px-3 py-2 bg-background border border-border rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/50"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-text-secondary mb-1 block">Precio Antes</label>
+              <input
+                type="text"
+                placeholder="149.900"
+                value={creativeControls.priceBefore}
+                onChange={(e) => setCreativeControls({ ...creativeControls, priceBefore: e.target.value.slice(0, 15) })}
+                className="w-full px-3 py-2 bg-background border border-border rounded-lg text-text-primary line-through focus:outline-none focus:ring-2 focus:ring-accent/50"
+              />
+            </div>
+          </div>
+          <p className="text-xs text-text-secondary mt-2">
+            Estos precios aparecerán exactamente como los escribas en el banner generado
+          </p>
         </div>
 
         {/* Generate Button */}
