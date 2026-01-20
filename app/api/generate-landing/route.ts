@@ -2,24 +2,37 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { decrypt } from '@/lib/services/encryption'
 
-const LANDING_SYSTEM_PROMPT = `You are an expert e-commerce landing page designer. Your task is to create a detailed prompt for generating professional, high-converting landing page section images.
+// OPTIMIZED SYSTEM PROMPT - Similar to Ecom Magic
+const LANDING_SYSTEM_PROMPT = `You are an expert e-commerce visual designer specialized in creating high-converting landing page banners.
 
-CRITICAL RULES:
-1. ANALYZE the reference template's design, layout structure, colors, and design elements
-2. CREATE a detailed prompt that will REPLACE the product with the user's product
-3. GENERATE relevant, compelling sales copy suggestions in Spanish
-4. KEEP the same visual hierarchy, typography style, and graphic elements
-5. ENSURE the prompt describes a professional, polished landing page section
+YOUR MISSION: Create a NEW image that uses the DESIGN LAYOUT from the template but features the USER'S PRODUCT.
 
-OUTPUT FORMAT:
-Return ONLY a detailed image generation prompt in English that describes:
-- The exact layout and composition from the template
-- The user's product positioned like in the template
-- Colors and design elements to maintain
-- Spanish text suggestions for headlines and copy
-- Professional e-commerce quality standards
+CRITICAL RULES - YOU MUST FOLLOW:
+1. KEEP the EXACT layout structure, composition, and visual hierarchy from the template
+2. KEEP decorative elements: gradients, shapes, splashes, effects, icons, badges
+3. REPLACE the product in the template with the user's product (described below)
+4. REPLACE all text with new Spanish sales copy relevant to the user's product
+5. CHANGE the color scheme to match the user's product colors
+6. The result must look like a PROFESSIONAL e-commerce banner ready to use
 
-Be extremely specific and detailed for best results with image generation AI.`
+WHAT TO ANALYZE FROM TEMPLATE:
+- Layout: Where is the product? Text positions? Visual flow?
+- Style elements: Gradients, shapes, decorative items, lighting effects
+- Typography style: Bold headlines, sub-headlines placement
+- Badges/icons positions and style
+
+WHAT TO CHANGE:
+- Product: Replace with user's product
+- Colors: Adapt to user's product palette
+- Text: New Spanish sales copy for the product
+- Person (if any): Keep similar style but make it appropriate for the product
+
+OUTPUT: Return ONLY a detailed image generation prompt in English. Be extremely specific about:
+- Exact layout positions (top, center, bottom thirds)
+- Color palette based on user's product
+- Spanish text suggestions with exact placement
+- Decorative elements to include
+- Product positioning and lighting`
 
 // Helper to convert aspect ratio string to Gemini format
 function getAspectRatio(outputSize: string): string {
@@ -29,32 +42,51 @@ function getAspectRatio(outputSize: string): string {
   return '9:16' // Default for mobile landing pages
 }
 
-// Call Gemini API directly via REST for image generation
+// Call Gemini API for image generation with BOTH template AND product photos
 async function generateImageWithGemini(
   apiKey: string,
   prompt: string,
   aspectRatio: string,
   templateBase64?: string,
-  templateMimeType?: string
+  templateMimeType?: string,
+  productPhotosBase64?: { data: string; mimeType: string }[]
 ): Promise<{ imageBase64: string; mimeType: string } | null> {
   const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent'
   
-  // Build the parts array
-  const parts: any[] = [{ text: prompt }]
+  // Build the parts array - ORDER MATTERS!
+  const parts: any[] = []
   
-  // Add template image as reference if provided
+  // 1. First add template as design reference
   if (templateBase64 && templateMimeType) {
-    parts.unshift({
+    parts.push({
       inline_data: {
         mime_type: templateMimeType,
         data: templateBase64
       }
     })
-    // Prepend instruction to use template as reference
-    parts[1] = { 
-      text: `Use the provided image as a design reference/template. Recreate a similar layout and style but with the following content:\n\n${prompt}`
+  }
+  
+  // 2. Add product photos - THE KEY TO PROPER REPLACEMENT
+  if (productPhotosBase64 && productPhotosBase64.length > 0) {
+    for (const photo of productPhotosBase64) {
+      parts.push({
+        inline_data: {
+          mime_type: photo.mimeType,
+          data: photo.data
+        }
+      })
     }
   }
+  
+  // 3. Add the prompt with clear instructions
+  const fullPrompt = `IMPORTANT: 
+- Image 1 is the DESIGN TEMPLATE - copy its layout, structure, and style
+- Images 2+ are the USER'S PRODUCT - feature THIS product in the banner
+- DO NOT copy the template's product, use the user's product photos
+
+${prompt}`
+
+  parts.push({ text: fullPrompt })
 
   const payload = {
     contents: [{
@@ -106,18 +138,19 @@ async function generateImageWithGemini(
   }
 }
 
-// Call Gemini for prompt enhancement (text only)
+// Call Gemini for prompt enhancement (text only) - includes product photos for analysis
 async function enhancePromptWithGemini(
   apiKey: string,
   userPrompt: string,
   templateBase64?: string,
-  templateMimeType?: string
+  templateMimeType?: string,
+  productPhotosBase64?: { data: string; mimeType: string }[]
 ): Promise<string> {
   const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent'
   
   const parts: any[] = []
   
-  // Add template image if provided
+  // Add template image first
   if (templateBase64 && templateMimeType) {
     parts.push({
       inline_data: {
@@ -125,6 +158,18 @@ async function enhancePromptWithGemini(
         data: templateBase64
       }
     })
+  }
+  
+  // Add product photos for analysis
+  if (productPhotosBase64 && productPhotosBase64.length > 0) {
+    for (const photo of productPhotosBase64) {
+      parts.push({
+        inline_data: {
+          mime_type: photo.mimeType,
+          data: photo.data
+        }
+      })
+    }
   }
   
   parts.push({ text: userPrompt })
@@ -154,6 +199,14 @@ async function enhancePromptWithGemini(
   const data = await response.json()
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
   return text
+}
+
+// Helper to convert data URL to base64 object
+function parseDataUrl(dataUrl: string): { data: string; mimeType: string } | null {
+  if (!dataUrl.startsWith('data:')) return null
+  const [header, data] = dataUrl.split(',')
+  const mimeType = header.split(':')[1]?.split(';')[0] || 'image/jpeg'
+  return { data, mimeType }
 }
 
 export async function POST(request: Request) {
@@ -202,8 +255,11 @@ export async function POST(request: Request) {
     let templateMimeType: string | undefined
     
     if (templateUrl.startsWith('data:')) {
-      templateBase64 = templateUrl.split(',')[1]
-      templateMimeType = templateUrl.split(';')[0].split(':')[1]
+      const parsed = parseDataUrl(templateUrl)
+      if (parsed) {
+        templateBase64 = parsed.data
+        templateMimeType = parsed.mimeType
+      }
     } else {
       try {
         const response = await fetch(templateUrl)
@@ -216,30 +272,56 @@ export async function POST(request: Request) {
       }
     }
 
-    // Build the analysis prompt
-    const userPrompt = `Analyze this landing page template and create a detailed image generation prompt.
+    // Convert product photos to base64 array
+    const productPhotosBase64: { data: string; mimeType: string }[] = []
+    for (const photoUrl of productPhotos) {
+      if (photoUrl.startsWith('data:')) {
+        const parsed = parseDataUrl(photoUrl)
+        if (parsed) {
+          productPhotosBase64.push(parsed)
+        }
+      }
+    }
 
-PRODUCT TO FEATURE: ${productName}
-${creativeControls?.productDetails ? `PRODUCT DETAILS: ${creativeControls.productDetails}` : ''}
-${creativeControls?.salesAngle ? `SALES ANGLE: ${creativeControls.salesAngle}` : ''}
-${creativeControls?.targetAvatar ? `TARGET CUSTOMER: ${creativeControls.targetAvatar}` : ''}
-${creativeControls?.additionalInstructions ? `STYLE NOTES: ${creativeControls.additionalInstructions}` : ''}
+    if (productPhotosBase64.length === 0) {
+      return NextResponse.json({ error: 'No se pudieron procesar las fotos del producto' }, { status: 400 })
+    }
 
-Create a detailed prompt that describes how to recreate this template design but featuring the product above. Include specific details about layout, colors, text placement, and styling. The generated image should look professional and ready for a real e-commerce landing page.`
+    // Build the analysis prompt with more context
+    const userPrompt = `TEMPLATE ANALYSIS REQUEST:
 
-    // Step 1: Enhance the prompt using Gemini 2.0 Flash (fast, cheap)
+The first image is the DESIGN TEMPLATE to copy the layout from.
+The following images are the USER'S PRODUCT that must appear in the final banner.
+
+PRODUCT INFO:
+- Name: ${productName}
+${creativeControls?.productDetails ? `- Details: ${creativeControls.productDetails}` : ''}
+${creativeControls?.salesAngle ? `- Sales Angle: ${creativeControls.salesAngle}` : ''}
+${creativeControls?.targetAvatar ? `- Target Customer: ${creativeControls.targetAvatar}` : ''}
+${creativeControls?.additionalInstructions ? `- Special Instructions: ${creativeControls.additionalInstructions}` : ''}
+
+TASK: Create a detailed prompt to generate a landing page banner that:
+1. Uses the EXACT layout and design style from the template
+2. Features the USER'S PRODUCT (from the product photos) as the main product
+3. Has NEW Spanish sales copy relevant to "${productName}"
+4. Adapts colors to match the user's product
+
+Analyze both the template design AND the product photos carefully.`
+
+    // Step 1: Enhance the prompt using Gemini 2.0 Flash with ALL images
     let enhancedPrompt: string
     try {
       enhancedPrompt = await enhancePromptWithGemini(
         googleApiKey,
         userPrompt,
         templateBase64,
-        templateMimeType
+        templateMimeType,
+        productPhotosBase64
       )
     } catch (error: any) {
       console.error('Prompt enhancement error:', error)
       // Fallback to basic prompt
-      enhancedPrompt = `Professional e-commerce landing page section featuring ${productName}. 
+      enhancedPrompt = `Professional e-commerce landing page banner for ${productName}. 
 ${creativeControls?.productDetails ? `Product: ${creativeControls.productDetails}. ` : ''}
 ${creativeControls?.salesAngle ? `Sales angle: ${creativeControls.salesAngle}. ` : ''}
 Modern design with bold typography, clean layout, Spanish sales copy, 
@@ -248,7 +330,7 @@ Vertical mobile-optimized layout (9:16 aspect ratio).
 ${creativeControls?.additionalInstructions || ''}`
     }
 
-    // Step 2: Generate image using Gemini 2.5 Flash Image
+    // Step 2: Generate image with ALL images (template + product photos)
     const aspectRatio = getAspectRatio(outputSize)
     let generatedImageUrl: string | null = null
 
@@ -258,7 +340,8 @@ ${creativeControls?.additionalInstructions || ''}`
         enhancedPrompt,
         aspectRatio,
         templateBase64,
-        templateMimeType
+        templateMimeType,
+        productPhotosBase64 // NOW PASSING PRODUCT PHOTOS!
       )
 
       if (imageResult) {
@@ -284,7 +367,7 @@ ${creativeControls?.additionalInstructions || ''}`
       }, { status: 200 })
     }
 
-    // Save to database - IMPORTANT: Handle errors properly
+    // Save to database
     const serviceClient = await createServiceClient()
     const { data: insertedSection, error: insertError } = await serviceClient
       .from('landing_sections')
@@ -302,11 +385,10 @@ ${creativeControls?.additionalInstructions || ''}`
 
     if (insertError) {
       console.error('Database insert error:', insertError)
-      // Return error instead of silently failing
       return NextResponse.json({ 
         success: false,
         error: `Error guardando sección: ${insertError.message}`,
-        imageUrl: generatedImageUrl, // Still provide the image
+        imageUrl: generatedImageUrl,
         tip: 'La imagen se generó pero no se pudo guardar. Verifica la configuración de la base de datos.'
       }, { status: 200 })
     }
