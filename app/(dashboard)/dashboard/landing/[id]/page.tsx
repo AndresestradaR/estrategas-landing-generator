@@ -437,13 +437,17 @@ export default function ProductGeneratePage() {
         method: 'DELETE',
       })
 
-      if (!response.ok) {
-        throw new Error('Error al eliminar')
+      const data = await response.json()
+      console.log('[Frontend] Delete response:', data)
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Error al eliminar')
       }
-    } catch (error) {
+    } catch (error: any) {
       // Rollback on error
+      console.error('[Frontend] Delete failed, rolling back:', error)
       setGeneratedSections(previousSections)
-      toast.error('Error al eliminar sección')
+      toast.error(error.message || 'Error al eliminar sección')
     }
   }
 

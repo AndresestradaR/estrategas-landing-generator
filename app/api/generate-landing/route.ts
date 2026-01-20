@@ -50,43 +50,50 @@ async function generateImageWithGemini(
     })
   }
   
-  // Build prompt
-  let prompt = `You are creating a PROFESSIONAL E-COMMERCE BANNER.
+  // Build structured JSON prompt
+  const systemInstruction = {
+    role: "professional_banner_designer",
+    task: "recreate_banner_with_new_product",
+    images: {
+      image_1: "DESIGN_TEMPLATE_ONLY - Use for layout, style, colors, positioning. IGNORE the product shown.",
+      image_2_plus: "ACTUAL_PRODUCT - This is the ONLY product to feature in the output."
+    },
+    product_info: {
+      name: productName,
+      details: creativeControls?.productDetails || null,
+      sales_angle: creativeControls?.salesAngle || null,
+      target_customer: creativeControls?.targetAvatar || null,
+      special_instructions: creativeControls?.additionalInstructions || null
+    },
+    strict_rules: {
+      product_replacement: {
+        priority: "CRITICAL",
+        instruction: "COMPLETELY REPLACE template product with user's product from images 2+",
+        preserve: ["product_packaging", "product_labels", "product_branding"]
+      },
+      text_generation: {
+        language: "Spanish",
+        style: "UPPERCASE_HEADLINES",
+        font_size: "LARGE_AND_BOLD",
+        requirements: ["NO_SPELLING_ERRORS", "HIGH_CONTRAST", "CLEARLY_READABLE"],
+        forbidden: ["gibberish", "random_letters", "corrupted_text", "english_words"]
+      },
+      design: {
+        copy_from_template: ["layout", "positioning", "decorative_elements", "style"],
+        adapt_to_product: ["color_scheme", "mood"]
+      }
+    },
+    output: {
+      type: "professional_ecommerce_banner",
+      quality: "production_ready",
+      aspect_ratio: aspectRatio
+    }
+  }
 
-=== CRITICAL: IMAGE ROLES ===
-- IMAGE 1 (First image): This is ONLY a DESIGN TEMPLATE for layout/style reference
-- IMAGES 2+ (Subsequent images): These show THE ACTUAL PRODUCT to feature
+  const prompt = `SYSTEM INSTRUCTION (JSON):
+${JSON.stringify(systemInstruction, null, 2)}
 
-=== ABSOLUTE REQUIREMENTS ===
-
-1. **PRODUCT REPLACEMENT (MANDATORY)**:
-   - COMPLETELY IGNORE the product shown in the template (Image 1)
-   - The ONLY product in your output must be from Images 2+
-   - Show the user's product PROMINENTLY and CLEARLY
-   - Preserve the product's ACTUAL packaging, labels, and branding exactly as shown
-   - DO NOT invent or modify the product appearance
-
-2. **DESIGN ELEMENTS**:
-   - Copy the LAYOUT STRUCTURE from the template (positions, sections, decorative elements)
-   - Adapt the COLOR SCHEME to complement the user's product packaging
-   - Keep similar poses/models if present, but with the NEW product
-
-3. **TEXT REQUIREMENTS (VERY IMPORTANT)**:
-   - ALL text must be in SPANISH
-   - Use LARGE, BOLD, HIGHLY READABLE fonts
-   - Headlines: UPPERCASE, minimum 72pt equivalent size
-   - Subtext: Clear and legible, minimum 36pt equivalent
-   - NO spelling errors, NO gibberish text
-   - Text must have good contrast against background
-
-=== PRODUCT INFO ===
-Product Name: ${productName}
-${creativeControls?.productDetails ? `Details: ${creativeControls.productDetails}` : ''}
-${creativeControls?.salesAngle ? `Sales Angle: ${creativeControls.salesAngle}` : ''}
-${creativeControls?.targetAvatar ? `Target: ${creativeControls.targetAvatar}` : ''}
-${creativeControls?.additionalInstructions ? `Instructions: ${creativeControls.additionalInstructions}` : ''}
-
-Generate a PROFESSIONAL, SALES-READY banner. The product from Images 2+ must be the STAR of the design.`
+Execute the task defined above. The product from images 2+ must be the STAR of the final banner.`
 
   parts.push({ text: prompt })
 
