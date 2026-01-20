@@ -50,84 +50,86 @@ async function generateImageWithGemini(
     })
   }
   
-  // Build adaptive creative prompt
+  // Build expert art director prompt
   const systemInstruction = {
-    role: "ecommerce_creative_director",
-    task: "CREATE_STUNNING_BANNER_inspired_by_template",
-    understanding: {
-      image_1: "STYLE REFERENCE - Use this template for inspiration on layout, design quality, and visual style",
-      image_2_plus: "THE ACTUAL PRODUCT - Feature this product prominently with its real packaging and branding"
-    },
-    creative_approach: {
-      template_usage: "Use as INSPIRATION for quality and style, NOT as exact copy",
-      product_focus: "The new product is the STAR - everything should support selling THIS product",
-      smart_adaptation: [
-        "Generate icons/graphics that make sense for THIS product (e.g., muscle icons for fitness, beauty icons for cosmetics, growth charts for supplements)",
-        "Choose models/people that match the target customer for THIS product",
-        "Select colors that complement THIS product's packaging",
-        "Write compelling text specifically for THIS product's benefits"
-      ]
-    },
-    product_info: {
-      name: productName,
-      details: creativeControls?.productDetails || "Analyze the product from the photos",
-      sales_angle: creativeControls?.salesAngle || "Create a compelling sales angle based on the product",
-      target_customer: creativeControls?.targetAvatar || "Determine ideal customer from product type",
-      special_instructions: creativeControls?.additionalInstructions || null
-    },
-    user_instructions_priority: {
-      note: "If the user provides specific instructions in 'special_instructions', FOLLOW THEM EXACTLY",
-      examples: [
-        "If user says 'change girl to guy' -> use a male model",
-        "If user says 'white background' -> use white background",
-        "If user says 'add muscle icons' -> add relevant muscle/fitness icons",
-        "User instructions OVERRIDE template elements"
-      ]
-    },
-    design_requirements: {
-      quality: "Professional, high-end e-commerce quality like top Shopify stores",
-      text: {
-        language: "Spanish",
-        style: "BOLD, UPPERCASE headlines that SELL",
-        content: "Compelling copy specific to THIS product - benefits, offers, CTAs",
-        forbidden: ["spelling errors", "gibberish", "corrupted text", "random letters"]
+    role: "Expert E-commerce Art Director",
+    task: "Product Image Synthesis & Creative Fusion",
+    context: {
+      reference_style: "Use IMAGE 1 as style reference - analyze its quality, composition, and visual approach",
+      product_to_feature: {
+        name: productName,
+        source: "IMAGES 2+ show the actual product to feature",
+        details: creativeControls?.productDetails || "Analyze product from provided photos"
       },
-      visual_elements: [
-        "Product shown clearly with real packaging/labels from images 2+",
-        "Relevant icons that support the product's benefits",
-        "Trust badges, offer tags, price displays as appropriate",
-        "Eye-catching but professional color scheme"
-      ]
+      composition: {
+        subject_placement: "Dynamic pose, professional positioning based on template style",
+        graphic_area: "Reserved space for floating icons and text overlay",
+        background: "Premium gradient or style matching product brand identity"
+      }
     },
-    output: {
-      type: "sales_ready_banner",
-      quality: "professional_ecommerce",
-      aspect_ratio: aspectRatio
+    instructions: {
+      subject_handling: {
+        guideline: creativeControls?.targetAvatar || "Match model/subject to product's target demographic",
+        action: "Powerful, energetic pose conveying the product's benefits",
+        custom_instructions: creativeControls?.additionalInstructions || null
+      },
+      product_integration: {
+        item: productName,
+        placement: "Integrated in foreground or held by subject, naturally lit",
+        detail_level: "Hyper-realistic label and texture from provided product photos"
+      },
+      pain_point_visualization: {
+        concept: "Represent product benefits through 3D floating icons",
+        approach: creativeControls?.salesAngle || "Analyze product and create relevant benefit icons",
+        style: "Glossy 3D glassmorphism icons with subtle glow"
+      }
+    },
+    text_requirements: {
+      language: "Spanish",
+      style: "BOLD UPPERCASE headlines",
+      content: "Compelling sales copy for THIS specific product",
+      forbidden: ["spelling errors", "gibberish", "corrupted text", "blurry text"]
+    },
+    technical_requirements: {
+      aspect_ratio: aspectRatio,
+      lighting: "Cinematic studio lighting, rim light to separate subject from background",
+      quality: "8K resolution, commercial advertising photography, no distorted limbs",
+      negative_prompt: "blurry, low quality, distorted product labels, messy composition, spelling errors"
     }
   }
 
-  const prompt = `You are a TOP E-COMMERCE CREATIVE DIRECTOR creating a banner that SELLS.
+  const prompt = `You are an EXPERT E-COMMERCE ART DIRECTOR.
 
-CONTEXT:
+SYSTEM INSTRUCTION:
 ${JSON.stringify(systemInstruction, null, 2)}
 
-YOUR MISSION:
-1. Look at the TEMPLATE (image 1) for STYLE INSPIRATION - quality level, layout ideas, visual approach
-2. Look at the PRODUCT PHOTOS (images 2+) - this is what you're selling
-3. Create a STUNNING banner that would make someone want to BUY this product
+IMAGE ROLES:
+- IMAGE 1: Style reference template - use for composition, quality level, visual approach
+- IMAGES 2+: The ACTUAL PRODUCT to feature - show this product with hyper-realistic detail
 
-BE CREATIVE AND SMART:
-- Add icons/graphics that make sense for THIS product (fitness icons for supplements, beauty elements for cosmetics, etc.)
-- Use models/people that match who would BUY this product
-- Write Spanish text that highlights THIS product's specific benefits
-- Make design choices that SUPPORT SELLING this product
+YOUR TASK:
+1. Analyze the template style (image 1)
+2. Feature the product from images 2+ as the STAR
+3. Create floating 3D icons that represent the product's BENEFITS
+4. Use cinematic lighting and premium composition
+5. Write Spanish text that SELLS this product
 
 ${creativeControls?.additionalInstructions ? `
-IMPORTANT - USER'S SPECIFIC INSTRUCTIONS (FOLLOW EXACTLY):
+CRITICAL - FOLLOW THESE SPECIFIC INSTRUCTIONS:
 ${creativeControls.additionalInstructions}
 ` : ''}
 
-Create a banner so good it could be used by a top e-commerce brand TODAY.`
+${creativeControls?.salesAngle ? `
+SALES ANGLE TO EMPHASIZE:
+${creativeControls.salesAngle}
+` : ''}
+
+${creativeControls?.targetAvatar ? `
+TARGET CUSTOMER (match visuals to this person):
+${creativeControls.targetAvatar}
+` : ''}
+
+Create a banner worthy of a premium fitness/lifestyle brand campaign.`
 
   parts.push({ text: prompt })
 
