@@ -69,8 +69,8 @@ export default function LoginPage() {
   const handleVerifyOTP = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!otp.trim() || otp.length !== 6) {
-      toast.error('Ingresa el código de 6 dígitos')
+    if (!otp.trim()) {
+      toast.error('Ingresa el código')
       return
     }
 
@@ -166,7 +166,7 @@ export default function LoginPage() {
               <CardHeader className="text-center">
                 <CardTitle className="text-2xl">Ingresa el código</CardTitle>
                 <CardDescription>
-                  Enviamos un código de 6 dígitos a<br />
+                  Enviamos un código a<br />
                   <span className="text-text-primary font-medium">{email}</span>
                 </CardDescription>
               </CardHeader>
@@ -175,12 +175,12 @@ export default function LoginPage() {
                   <Input
                     type="text"
                     label="Código de verificación"
-                    placeholder="123456"
+                    placeholder="Ingresa el código del correo"
                     value={otp}
-                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
                     required
                     autoFocus
-                    className="text-center text-2xl tracking-widest"
+                    className="text-center text-xl tracking-widest"
                   />
                   <Button type="submit" className="w-full" isLoading={isLoading}>
                     Verificar código
