@@ -2,14 +2,17 @@
 
 import { useState } from 'react'
 import { Button, Input, Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui'
-import { ImagePlus, Download, Sparkles } from 'lucide-react'
+import { Sparkles, Download, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
+
+export const dynamic = 'force-dynamic'
 
 export default function GeneratePage() {
   const [productName, setProductName] = useState('')
   const [notes, setNotes] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const [result, setResult] = useState<{ imageUrl: string; prompt: string } | null>(null)
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [generatedImage, setGeneratedImage] = useState<string | null>(null)
+  const [enhancedPrompt, setEnhancedPrompt] = useState<string | null>(null)
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -19,44 +22,46 @@ export default function GeneratePage() {
       return
     }
 
-    setIsLoading(true)
-    setResult(null)
+    setIsGenerating(true)
+    setGeneratedImage(null)
+    setEnhancedPrompt(null)
 
     try {
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productName, notes }),
+        body: JSON.stringify({
+          productName: productName.trim(),
+          notes: notes.trim() || undefined,
+        }),
       })
 
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Error al generar')
+        throw new Error(data.error || 'Error al generar imagen')
       }
 
-      setResult({
-        imageUrl: data.imageUrl,
-        prompt: data.prompt,
-      })
-      toast.success('¡Imagen generada!')
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Error al generar imagen')
+      setGeneratedImage(data.imageUrl)
+      setEnhancedPrompt(data.enhancedPrompt)
+      toast.success('¡Imagen generada exitosamente!')
+    } catch (error: any) {
+      toast.error(error.message || 'Error al generar imagen')
     } finally {
-      setIsLoading(false)
+      setIsGenerating(false)
     }
   }
 
   const handleDownload = async () => {
-    if (!result?.imageUrl) return
-    
+    if (!generatedImage) return
+
     try {
-      const response = await fetch(result.imageUrl)
+      const response = await fetch(generatedImage)
       const blob = await response.blob()
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${productName.replace(/\s+/g, '-')}-landing.png`
+      a.download = `${productName.replace(/\s+/g, '-').toLowerCase()}-landing.png`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
@@ -68,49 +73,52 @@ export default function GeneratePage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className="max-w-4xl mx-auto">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-text-primary">Generar Imagen</h1>
         <p className="text-text-secondary mt-1">
-          Crea imágenes de producto profesionales para tus landings
+          Crea imágenes profesionales 9:16 para tus landing pages
         </p>
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-8">
+      <div className="grid lg:grid-cols-2 gap-6">
         {/* Form */}
         <Card>
           <CardHeader>
             <CardTitle>Detalles del Producto</CardTitle>
             <CardDescription>
-              Ingresa la información del producto que quieres generar
+              Describe tu producto para generar la imagen perfecta
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleGenerate} className="space-y-6">
+            <form onSubmit={handleGenerate} className="space-y-4">
               <Input
                 label="Nombre del Producto"
-                placeholder="Ej: Smartwatch deportivo negro"
+                placeholder="Ej: Sérum de Vitamina C"
                 value={productName}
                 onChange={(e) => setProductName(e.target.value)}
                 required
               />
-
               <div>
                 <label className="block text-sm font-medium text-text-primary mb-1.5">
-                  Notas Adicionales (opcional)
+                  Notas adicionales (opcional)
                 </label>
                 <textarea
-                  placeholder="Ej: Mostrar en muñeca, fondo degradado azul, estilo minimalista"
+                  className="w-full px-4 py-3 bg-background border border-border rounded-lg text-text-primary placeholder-text-secondary focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition-colors resize-none"
+                  rows={3}
+                  placeholder="Ej: Fondo rosa suave, estilo minimalista, con gotas de agua"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  rows={4}
-                  className="w-full px-4 py-2.5 bg-surface border border-border rounded-lg text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all duration-200 resize-none"
                 />
               </div>
-
-              <Button type="submit" className="w-full" isLoading={isLoading}>
+              <Button 
+                type="submit" 
+                className="w-full" 
+                isLoading={isGenerating}
+                disabled={isGenerating}
+              >
                 <Sparkles className="w-4 h-4 mr-2" />
-                {isLoading ? 'Generando...' : 'Generar Imagen'}
+                {isGenerating ? 'Generando...' : 'Generar Imagen'}
               </Button>
             </form>
           </CardContent>
@@ -119,46 +127,52 @@ export default function GeneratePage() {
         {/* Preview */}
         <Card>
           <CardHeader>
-            <CardTitle>Preview</CardTitle>
+            <CardTitle>Vista Previa</CardTitle>
             <CardDescription>
               Tu imagen generada aparecerá aquí
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="aspect-[9/16] bg-border/50 rounded-lg overflow-hidden flex items-center justify-center">
-              {isLoading ? (
+            <div className="aspect-[9/16] bg-background border border-border rounded-lg overflow-hidden flex items-center justify-center">
+              {isGenerating ? (
                 <div className="text-center">
-                  <div className="w-12 h-12 border-4 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                  <p className="text-text-secondary">Generando imagen...</p>
-                  <p className="text-xs text-text-secondary mt-2">Esto puede tardar unos segundos</p>
+                  <Loader2 className="w-8 h-8 text-accent animate-spin mx-auto mb-3" />
+                  <p className="text-text-secondary text-sm">Generando imagen...</p>
+                  <p className="text-text-secondary text-xs mt-1">Esto puede tomar 20-30 segundos</p>
                 </div>
-              ) : result?.imageUrl ? (
+              ) : generatedImage ? (
                 <img 
-                  src={result.imageUrl} 
+                  src={generatedImage} 
                   alt={productName}
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <div className="text-center p-8">
-                  <ImagePlus className="w-16 h-16 text-text-secondary mx-auto mb-4 opacity-50" />
-                  <p className="text-text-secondary">
-                    Ingresa los datos del producto y haz clic en generar
+                <div className="text-center px-4">
+                  <Sparkles className="w-12 h-12 text-border mx-auto mb-3" />
+                  <p className="text-text-secondary text-sm">
+                    Completa el formulario para generar tu imagen
                   </p>
                 </div>
               )}
             </div>
 
-            {result?.imageUrl && (
-              <div className="mt-4 space-y-4">
-                <Button onClick={handleDownload} variant="secondary" className="w-full">
+            {generatedImage && (
+              <div className="mt-4 space-y-3">
+                <Button 
+                  variant="secondary" 
+                  className="w-full"
+                  onClick={handleDownload}
+                >
                   <Download className="w-4 h-4 mr-2" />
                   Descargar Imagen
                 </Button>
                 
-                <div className="p-4 bg-surface rounded-lg">
-                  <p className="text-xs text-text-secondary mb-1">Prompt utilizado:</p>
-                  <p className="text-sm text-text-primary">{result.prompt}</p>
-                </div>
+                {enhancedPrompt && (
+                  <div className="p-3 bg-background rounded-lg border border-border">
+                    <p className="text-xs text-text-secondary mb-1">Prompt utilizado:</p>
+                    <p className="text-xs text-text-primary">{enhancedPrompt}</p>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>

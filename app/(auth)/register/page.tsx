@@ -8,9 +8,10 @@ import { Button, Input, Card, CardHeader, CardTitle, CardDescription, CardConten
 import { Sparkles } from 'lucide-react'
 import toast from 'react-hot-toast'
 
+export const dynamic = 'force-dynamic'
+
 export default function RegisterPage() {
   const router = useRouter()
-  const supabase = createClient()
   const [isLoading, setIsLoading] = useState(false)
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
@@ -21,6 +22,7 @@ export default function RegisterPage() {
     setIsLoading(true)
 
     try {
+      const supabase = createClient()
       const { error } = await supabase.auth.signUp({
         email,
         password,
@@ -46,15 +48,20 @@ export default function RegisterPage() {
   }
 
   const handleGoogleLogin = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/api/auth/callback`,
-      },
-    })
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/api/auth/callback`,
+        },
+      })
 
-    if (error) {
-      toast.error(error.message)
+      if (error) {
+        toast.error(error.message)
+      }
+    } catch (error) {
+      toast.error('Error al iniciar sesión con Google')
     }
   }
 

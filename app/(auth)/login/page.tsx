@@ -8,6 +8,8 @@ import { Button, Input, Card, CardHeader, CardTitle, CardDescription, CardConten
 import { Sparkles } from 'lucide-react'
 import toast from 'react-hot-toast'
 
+export const dynamic = 'force-dynamic'
+
 export default function LoginPage() {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)

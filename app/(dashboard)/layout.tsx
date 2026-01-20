@@ -17,6 +17,8 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
+export const dynamic = 'force-dynamic'
+
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Generar', href: '/dashboard/generate', icon: ImagePlus },
@@ -31,10 +33,10 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname()
   const router = useRouter()
-  const supabase = createClient()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const handleLogout = async () => {
+    const supabase = createClient()
     await supabase.auth.signOut()
     toast.success('Sesión cerrada')
     router.push('/login')
