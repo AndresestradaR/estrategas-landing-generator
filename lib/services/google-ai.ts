@@ -1,4 +1,4 @@
-import { GoogleGenAI, Modality } from '@anthropic-ai/google-genai'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
 /**
  * Build a base prompt for landing page image generation
@@ -24,9 +24,11 @@ export async function enhancePrompt(
   productName: string,
   notes?: string
 ): Promise<string> {
-  const genAI = new GoogleGenAI({ apiKey })
+  const genAI = new GoogleGenerativeAI(apiKey)
   
-  const systemPrompt = `You are an expert at creating prompts for AI image generation, specifically for e-commerce product landing pages.
+  const model = genAI.getGenerativeModel({ 
+    model: 'gemini-2.0-flash-exp',
+    systemInstruction: `You are an expert at creating prompts for AI image generation, specifically for e-commerce product landing pages.
 Your task is to transform simple product descriptions into detailed, professional prompts that will generate high-quality hero images for landing pages.
 
 Focus on:
@@ -38,6 +40,7 @@ Focus on:
 - High contrast and sharp details
 
 Always output ONLY the enhanced prompt, nothing else. No explanations, no quotes, just the prompt text.`
+  })
 
   const userMessage = `Create an optimized image generation prompt for a landing page hero image.
 
@@ -47,17 +50,9 @@ ${notes ? `Additional notes: ${notes}` : ''}
 Generate a detailed prompt that will create a professional, conversion-optimized hero image.`
 
   try {
-    const response = await genAI.models.generateContent({
-      model: 'gemini-2.0-flash',
-      contents: userMessage,
-      config: {
-        systemInstruction: systemPrompt,
-        temperature: 0.7,
-        maxOutputTokens: 500,
-      },
-    })
-
-    const enhancedPrompt = response.text?.trim()
+    const result = await model.generateContent(userMessage)
+    const response = await result.response
+    const enhancedPrompt = response.text()?.trim()
     
     if (!enhancedPrompt) {
       throw new Error('Empty response from Gemini')
@@ -72,24 +67,31 @@ Generate a detailed prompt that will create a professional, conversion-optimized
 }
 
 /**
- * Generate image using Nano Banana Pro (Google's image model)
+ * Generate image using Nano Banana Pro (Google's Imagen 3 model)
  */
 export async function generateImage(
   apiKey: string,
   prompt: string
 ): Promise<{ success: boolean; imageUrl?: string; error?: string }> {
-  const genAI = new GoogleGenAI({ apiKey })
+  const genAI = new GoogleGenerativeAI(apiKey)
 
   try {
-    const response = await genAI.models.generateContent({
-      model: 'gemini-3-pro-image-preview', // Nano Banana Pro
-      contents: prompt,
-      config: {
-        responseModalities: [Modality.IMAGE, Modality.TEXT],
+    // Use Imagen 3 model for image generation
+    const model = genAI.getGenerativeModel({ 
+      model: 'imagen-3.0-generate-002'
+    })
+
+    const result = await model.generateContent({
+      contents: [{ 
+        role: 'user', 
+        parts: [{ text: prompt }] 
+      }],
+      generationConfig: {
+        responseMimeType: 'image/png',
       },
     })
 
-    // Extract image from response
+    const response = await result.response
     const parts = response.candidates?.[0]?.content?.parts || []
     
     for (const part of parts) {
@@ -100,12 +102,27 @@ export async function generateImage(
       }
     }
 
+    // If no inline image, try text response (some models return URLs)
+    const textResponse = response.text()
+    if (textResponse && textResponse.startsWith('http')) {
+      return { success: true, imageUrl: textResponse.trim() }
+    }
+
     return { 
       success: false, 
       error: 'No image generated in response' 
     }
   } catch (error: any) {
     console.error('Image generation failed:', error)
+    
+    // Check for specific error types
+    if (error.message?.includes('not found') || error.message?.includes('404')) {
+      return {
+        success: false,
+        error: 'Modelo de imagen no disponible. Verifica que tu API key tenga acceso a Imagen 3.'
+      }
+    }
+    
     return { 
       success: false, 
       error: error.message || 'Error generating image' 
