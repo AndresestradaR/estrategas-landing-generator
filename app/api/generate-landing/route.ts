@@ -17,13 +17,14 @@ function parseDataUrl(dataUrl: string): { data: string; mimeType: string } | nul
   return { data, mimeType }
 }
 
-// Generate image with Gemini - single step, proven approach
+// Generate image with Gemini 2.5 Flash Image - THE CORRECT MODEL FOR TEXT IN IMAGES
 async function generateImageWithGemini(
   apiKey: string,
   templateBase64: string,
   templateMimeType: string,
   productPhotosBase64: { data: string; mimeType: string }[],
   productName: string,
+  aspectRatio: string,
   creativeControls?: {
     productDetails?: string
     salesAngle?: string
@@ -31,11 +32,13 @@ async function generateImageWithGemini(
     additionalInstructions?: string
   }
 ): Promise<{ imageBase64: string; mimeType: string } | null> {
-  const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent'
+  // IMPORTANT: Use gemini-2.5-flash-image for proper text rendering
+  // Do NOT change to gemini-2.0-flash-exp - it generates corrupted text
+  const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent'
   
   const parts: any[] = []
   
-  // Add template first
+  // Add template first as reference
   parts.push({
     inline_data: { mime_type: templateMimeType, data: templateBase64 }
   })
@@ -47,14 +50,10 @@ async function generateImageWithGemini(
     })
   }
   
-  // Build prompt - single comprehensive prompt
+  // Build prompt
   const hasCreativeControls = creativeControls?.productDetails || creativeControls?.salesAngle || creativeControls?.targetAvatar
   
-  let prompt = `RECREATE THIS BANNER WITH A NEW PRODUCT.
-
-=== IMAGES ===
-IMAGE 1: Design template - use this as visual reference for layout, style, colors, composition
-IMAGES 2+: The user's product - THIS is what must appear in the final banner
+  let prompt = `Use the first image as a DESIGN TEMPLATE/REFERENCE. Recreate this banner design but featuring the product shown in the subsequent images.
 
 === PRODUCT INFO ===
 Product Name: ${productName}
@@ -63,37 +62,21 @@ ${creativeControls?.salesAngle ? `Sales Angle: ${creativeControls.salesAngle}` :
 ${creativeControls?.targetAvatar ? `Target Customer: ${creativeControls.targetAvatar}` : ''}
 ${creativeControls?.additionalInstructions ? `Special Instructions: ${creativeControls.additionalInstructions}` : ''}
 
-=== CRITICAL INSTRUCTIONS ===
+=== INSTRUCTIONS ===
 
-1. PRODUCT REPLACEMENT (MOST IMPORTANT):
-   - Look at IMAGES 2+ carefully - this is the user's actual product
-   - The product in IMAGE 1 (template) must be COMPLETELY REPLACED with the user's product
-   - Show the user's product clearly with its actual label, colors, and branding
-   - The user's product must be the hero/focus of the banner
+1. PRODUCT: Replace the product in the template with the user's product from images 2+. Show it clearly with its actual label and branding.
 
-2. LAYOUT & COMPOSITION:
-   - Keep the same general layout structure as the template
-   - Keep similar poses if there are people
-   - Keep decorative elements (shapes, gradients, effects) in similar positions
+2. LAYOUT: Keep the same general layout, poses, and decorative elements from the template.
 
-3. COLOR ADAPTATION:
-   - Adapt the color scheme to match the user's product packaging colors
-   - Background, accents, and text colors should complement the product
+3. COLORS: Adapt colors to complement the product packaging.
 
-4. TEXT IN SPANISH:
+4. TEXT (SPANISH):
    - Generate SHORT, POWERFUL marketing text in Spanish
-   - Use UPPERCASE for headlines
-   - Keep text minimal: one headline, one subheadline, one CTA
-   - Text must be CLEAR and READABLE
-   - NO spelling errors
-   ${hasCreativeControls ? `- Base the text on the product details and sales angle provided above` : `- Base the text on what you see in the product photos`}
+   - UPPERCASE headlines
+   - Text must be CLEAR, READABLE, NO spelling errors
+   ${hasCreativeControls ? `- Use the product details and sales angle provided` : `- Base text on the product photos`}
 
-=== OUTPUT ===
-Create a professional e-commerce banner that:
-- Features the USER'S PRODUCT (from images 2+) as the main product
-- Uses the template's layout style
-- Has colors matching the user's product
-- Has clear, error-free Spanish marketing text`
+Create a professional e-commerce banner ready for a real landing page.`
 
   parts.push({ text: prompt })
 
@@ -102,7 +85,12 @@ Create a professional e-commerce banner that:
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [{ parts }],
-      generationConfig: { responseModalities: ['TEXT', 'IMAGE'] }
+      generationConfig: { 
+        responseModalities: ['IMAGE'],
+        imageConfig: {
+          aspectRatio: aspectRatio
+        }
+      }
     }),
   })
 
@@ -189,9 +177,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No se pudieron procesar las fotos' }, { status: 400 })
     }
 
+    // Get aspect ratio
+    const aspectRatio = getAspectRatio(outputSize)
+
     // Generate image
-    console.log('Generating image with product:', productName)
-    console.log('Creative controls:', creativeControls)
+    console.log('Generating image with gemini-2.5-flash-image for product:', productName)
+    console.log('Aspect ratio:', aspectRatio)
     
     const imageResult = await generateImageWithGemini(
       apiKey,
@@ -199,6 +190,7 @@ export async function POST(request: Request) {
       templateMimeType,
       productPhotosBase64,
       productName,
+      aspectRatio,
       creativeControls
     )
 
@@ -206,7 +198,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ 
         success: false,
         error: 'No se pudo generar la imagen',
-        tip: 'Verifica tu API key y facturacion de Google Cloud'
+        tip: 'Verifica tu API key y facturacion de Google Cloud. El modelo gemini-2.5-flash-image requiere billing activo.'
       }, { status: 200 })
     }
 
