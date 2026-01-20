@@ -2,43 +2,47 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { decrypt } from '@/lib/services/encryption'
 
-// OPTIMIZED SYSTEM PROMPT - Similar to Ecom Magic
-const LANDING_SYSTEM_PROMPT = `You are an expert e-commerce visual designer specialized in creating high-converting landing page banners.
+// OPTIMIZED SYSTEM PROMPT - Reverse-engineered from Ecom Magic results
+const LANDING_SYSTEM_PROMPT = `You are an expert e-commerce visual designer. Your job is to RECREATE a banner template with a NEW product.
 
-YOUR MISSION: Create a NEW image that uses the DESIGN LAYOUT from the template but features the USER'S PRODUCT.
+CRITICAL INSTRUCTION - WHAT TO KEEP EXACTLY THE SAME:
+1. PEOPLE/MODELS: Keep the EXACT same people, poses, body positions, facial expressions, clothing style
+2. LAYOUT: Keep the EXACT same composition - where elements are placed (top, middle, bottom)
+3. DESIGN ELEMENTS: Keep geometric shapes, gradients, diagonal lines, badges, icons in the SAME positions
+4. TYPOGRAPHY STYLE: Keep the same font styles (bold headlines, smaller subtext) in SAME positions
+5. VISUAL FLOW: Keep the same eye movement path through the design
 
-CRITICAL RULES - YOU MUST FOLLOW:
-1. KEEP the EXACT layout structure, composition, and visual hierarchy from the template
-2. KEEP decorative elements: gradients, shapes, splashes, effects, icons, badges
-3. REPLACE the product in the template with the user's product (described below)
-4. REPLACE all text with new Spanish sales copy relevant to the user's product
-5. CHANGE the color scheme to match the user's product colors
-6. The result must look like a PROFESSIONAL e-commerce banner ready to use
+CRITICAL INSTRUCTION - WHAT TO CHANGE:
+1. PRODUCT: Replace the product the model is holding/showing with the USER'S PRODUCT (from product photos)
+2. COLOR SCHEME: Change ALL colors to match the user's product packaging colors
+   - Background gradients → match product colors
+   - Accent colors → match product colors  
+   - Text colors → complementary to new scheme
+3. TEXT CONTENT: Generate NEW Spanish sales copy for the user's product
+   - Headlines should be catchy Spanish sales phrases
+   - Subtext should describe the product benefits
+   - Keep text in the SAME positions as template
+4. PRODUCT DETAILS: Show the user's actual product label/branding clearly
 
-WHAT TO ANALYZE FROM TEMPLATE:
-- Layout: Where is the product? Text positions? Visual flow?
-- Style elements: Gradients, shapes, decorative items, lighting effects
-- Typography style: Bold headlines, sub-headlines placement
-- Badges/icons positions and style
+OUTPUT FORMAT:
+Create a detailed image generation prompt that includes:
+- Exact description of people (gender, age, ethnicity, pose, expression, clothing colors matching new scheme)
+- Exact positions (top third, center, bottom third)  
+- Specific color hex codes or descriptions based on user's product
+- Spanish text with exact placement
+- All decorative elements and their positions
+- Lighting and effects to maintain
 
-WHAT TO CHANGE:
-- Product: Replace with user's product
-- Colors: Adapt to user's product palette
-- Text: New Spanish sales copy for the product
-- Person (if any): Keep similar style but make it appropriate for the product
-
-OUTPUT: Return ONLY a detailed image generation prompt in English. Be extremely specific about:
-- Exact layout positions (top, center, bottom thirds)
-- Color palette based on user's product
-- Spanish text suggestions with exact placement
-- Decorative elements to include
-- Product positioning and lighting`
+EXAMPLE TRANSFORMATION:
+Template: Blue/red scheme, man holding protein powder, woman beside him, diagonal stripes
+Result: Red/black scheme (matching new product), SAME man pose/expression, SAME woman pose, SAME diagonal stripes, NEW product in hand, NEW Spanish text`
 
 // Helper to convert aspect ratio string to Gemini format
 function getAspectRatio(outputSize: string): string {
   if (outputSize === '1080x1920' || outputSize === '9:16') return '9:16'
   if (outputSize === '1080x1080' || outputSize === '1:1') return '1:1'
   if (outputSize === '1920x1080' || outputSize === '16:9') return '16:9'
+  if (outputSize === '1080x1350' || outputSize === '4:5') return '4:5'
   return '9:16' // Default for mobile landing pages
 }
 
@@ -51,7 +55,7 @@ async function generateImageWithGemini(
   templateMimeType?: string,
   productPhotosBase64?: { data: string; mimeType: string }[]
 ): Promise<{ imageBase64: string; mimeType: string } | null> {
-  const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent'
+  const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent'
   
   // Build the parts array - ORDER MATTERS!
   const parts: any[] = []
@@ -78,13 +82,22 @@ async function generateImageWithGemini(
     }
   }
   
-  // 3. Add the prompt with clear instructions
-  const fullPrompt = `IMPORTANT: 
-- Image 1 is the DESIGN TEMPLATE - copy its layout, structure, and style
-- Images 2+ are the USER'S PRODUCT - feature THIS product in the banner
-- DO NOT copy the template's product, use the user's product photos
+  // 3. Add the prompt with VERY clear instructions
+  const fullPrompt = `RECREATE THIS BANNER WITH A NEW PRODUCT:
 
-${prompt}`
+IMAGE 1 = DESIGN TEMPLATE - Copy EVERYTHING about this design EXCEPT the product:
+- Copy the EXACT same people/models (poses, expressions, clothing style)
+- Copy the EXACT same layout and element positions
+- Copy the EXACT same design style (shapes, gradients, badges)
+
+IMAGES 2+ = USER'S PRODUCT - This is the NEW product to feature:
+- Replace the template's product with THIS product
+- Adapt ALL colors to match THIS product's packaging
+- Generate Spanish text relevant to THIS product
+
+${prompt}
+
+FINAL REMINDER: The result should look like the SAME photo shoot but with a DIFFERENT product and color scheme.`
 
   parts.push({ text: fullPrompt })
 
@@ -93,10 +106,7 @@ ${prompt}`
       parts: parts
     }],
     generationConfig: {
-      responseModalities: ['IMAGE'],
-      imageConfig: {
-        aspectRatio: aspectRatio
-      }
+      responseModalities: ['TEXT', 'IMAGE'],
     }
   }
 
@@ -287,26 +297,35 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No se pudieron procesar las fotos del producto' }, { status: 400 })
     }
 
-    // Build the analysis prompt with more context
-    const userPrompt = `TEMPLATE ANALYSIS REQUEST:
+    // Build the analysis prompt with detailed context
+    const userPrompt = `ANALYZE AND CREATE PROMPT FOR BANNER RECREATION:
 
-The first image is the DESIGN TEMPLATE to copy the layout from.
-The following images are the USER'S PRODUCT that must appear in the final banner.
+=== TEMPLATE IMAGE (Image 1) ===
+Analyze this design template carefully:
+- What people/models are shown? (gender, approximate age, ethnicity, pose, expression)
+- What is the layout? (element positions in top/middle/bottom thirds)
+- What colors are used? (background, accents, text)
+- What design elements exist? (shapes, gradients, badges, icons)
+- What is the product being shown?
 
-PRODUCT INFO:
-- Name: ${productName}
-${creativeControls?.productDetails ? `- Details: ${creativeControls.productDetails}` : ''}
+=== USER'S PRODUCT (Images 2+) ===
+This is the product that must REPLACE the template's product:
+- Product Name: ${productName}
+${creativeControls?.productDetails ? `- Product Details: ${creativeControls.productDetails}` : ''}
 ${creativeControls?.salesAngle ? `- Sales Angle: ${creativeControls.salesAngle}` : ''}
 ${creativeControls?.targetAvatar ? `- Target Customer: ${creativeControls.targetAvatar}` : ''}
 ${creativeControls?.additionalInstructions ? `- Special Instructions: ${creativeControls.additionalInstructions}` : ''}
 
-TASK: Create a detailed prompt to generate a landing page banner that:
-1. Uses the EXACT layout and design style from the template
-2. Features the USER'S PRODUCT (from the product photos) as the main product
-3. Has NEW Spanish sales copy relevant to "${productName}"
-4. Adapts colors to match the user's product
+=== YOUR TASK ===
+Create a DETAILED image generation prompt that will recreate the template with the user's product.
 
-Analyze both the template design AND the product photos carefully.`
+The prompt MUST specify:
+1. KEEP SAME: Exact people descriptions (poses, expressions), layout positions, design element positions
+2. CHANGE TO NEW: Colors matching user's product, the product itself, Spanish sales text
+
+Generate compelling Spanish headlines and subtext for "${productName}".
+
+Output only the image generation prompt, nothing else.`
 
     // Step 1: Enhance the prompt using Gemini 2.0 Flash with ALL images
     let enhancedPrompt: string
@@ -354,7 +373,7 @@ ${creativeControls?.additionalInstructions || ''}`
         success: false,
         error: `Error generando imagen: ${imageError.message}`,
         enhancedPrompt: enhancedPrompt,
-        tip: 'Verifica que tu API key de Google tenga acceso a Gemini 2.5 Flash Image y facturación habilitada.'
+        tip: 'Verifica que tu API key de Google tenga acceso a Gemini 2.5 Flash y facturación habilitada.'
       }, { status: 200 })
     }
 
