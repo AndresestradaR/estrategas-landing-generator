@@ -51,6 +51,10 @@ async function generateImageWithGemini(
     salesAngle?: string
     targetAvatar?: string
     additionalInstructions?: string
+    // Precios exactos estilo Zepol
+    priceAfter?: string
+    priceBefore?: string
+    currencySymbol?: string
   }
 ): Promise<{ imageBase64: string; mimeType: string } | null> {
   // IMPORTANT: Use gemini-2.5-flash-image for proper text rendering
@@ -71,44 +75,54 @@ async function generateImageWithGemini(
     })
   }
   
-  // Build COMPLETE banner prompt (Gemini generates everything including text)
-  const prompt = `You are creating a PROFESSIONAL E-COMMERCE BANNER in Spanish.
+  // Build COMPLETE banner prompt with Zepol-style exact data
+  const currencySymbol = creativeControls?.currencySymbol || '$'
+  const priceAfter = creativeControls?.priceAfter || ''
+  const priceBefore = creativeControls?.priceBefore || ''
 
-COMPOSITION (copy EXACTLY from the template image):
-- Keep the SAME layout, positions, and structure as the template
-- Keep ALL human models/people in the SAME poses
-- Keep ALL decorative elements (splashes, fruits, effects)
-- Keep price badges and offer sections in same positions
-- Keep footer with trust badges
+  const prompt = `Eres un diseñador experto de banners e-commerce. Crea un banner profesional en ESPAÑOL.
 
-PRODUCT REPLACEMENT (CRITICAL):
-- Replace ALL instances of the template product with the user's product
-- The product in the model's hand must be replaced
-- The large hero product must be replaced
-- Preserve the user's product packaging, labels, and branding EXACTLY as shown in images 2+
+COMPOSICIÓN (copia EXACTAMENTE del template - imagen 1):
+- Mantén el MISMO layout, posiciones y estructura del template
+- Mantén TODAS las personas/modelos en las MISMAS poses
+- Mantén TODOS los elementos decorativos (splashes, frutas, efectos)
+- Mantén badges de precio y secciones de oferta en mismas posiciones
+- Mantén footer con sellos de confianza
 
-TEXT REQUIREMENTS (VERY IMPORTANT):
-- ALL text must be in SPANISH
-- Use LARGE, BOLD, HIGHLY READABLE fonts
-- Text must be PERFECTLY SPELLED - no gibberish, no random letters
-- Copy the TEXT STYLE from the template (font size, positioning)
-- Headlines should be impactful and sales-focused
+REEMPLAZO DE PRODUCTO (CRÍTICO):
+- Reemplaza TODAS las instancias del producto del template con el producto del usuario
+- El producto en la mano del modelo debe ser reemplazado
+- El producto hero grande debe ser reemplazado
+- Preserva el empaque, etiquetas y branding del producto del usuario EXACTAMENTE como se muestra en las imágenes 2+
 
-FORBIDDEN:
-- Do NOT remove any elements from the template
-- Do NOT simplify the design
-- Do NOT change the layout
-- Do NOT generate misspelled or corrupted text
-- Do NOT create gibberish letters
+DATOS EXACTOS PARA EL BANNER (USA ESTOS VALORES, NO INVENTES):
+- Producto: ${productName}
+${priceAfter ? `- Precio OFERTA: ${currencySymbol}${priceAfter} (este es el precio principal, grande y destacado)` : ''}
+${priceBefore ? `- Precio ANTES: ${currencySymbol}${priceBefore} (precio tachado, más pequeño)` : ''}
+- País: Colombia
+${creativeControls?.productDetails ? `- Detalles: ${creativeControls.productDetails}` : ''}
 
-PRODUCT INFO:
-Name: ${productName}
-${creativeControls?.productDetails ? `Details: ${creativeControls.productDetails}` : ''}
-${creativeControls?.salesAngle ? `Sales Angle: ${creativeControls.salesAngle}` : ''}
-${creativeControls?.targetAvatar ? `Target Customer: ${creativeControls.targetAvatar}` : ''}
-${creativeControls?.additionalInstructions ? `Special Instructions: ${creativeControls.additionalInstructions}` : ''}
+TEXTO (MUY IMPORTANTE):
+- TODO el texto debe estar en ESPAÑOL PERFECTO
+- Usa los PRECIOS EXACTOS que te di arriba - NO inventes precios
+- Usa fuentes GRANDES, BOLD, MUY LEGIBLES
+- El texto debe estar PERFECTAMENTE ESCRITO - sin letras al azar, sin errores
+- Copia el ESTILO de texto del template (tamaño, posición, colores)
+- Los titulares deben ser impactantes y orientados a ventas
 
-Generate a banner that looks like an EXACT COPY of the template, with ONLY the product replaced and text adapted to the new product.`
+${creativeControls?.salesAngle ? `ÁNGULO DE VENTA: ${creativeControls.salesAngle}` : ''}
+${creativeControls?.targetAvatar ? `PÚBLICO OBJETIVO: ${creativeControls.targetAvatar}` : ''}
+${creativeControls?.additionalInstructions ? `INSTRUCCIONES ESPECIALES: ${creativeControls.additionalInstructions}` : ''}
+
+PROHIBIDO:
+- NO remover ningún elemento del template
+- NO simplificar el diseño
+- NO cambiar el layout
+- NO generar texto con errores ortográficos
+- NO crear letras sin sentido o gibberish
+- NO inventar precios diferentes a los que te di
+
+RESULTADO: Banner IDÉNTICO al template, solo con producto reemplazado y textos/precios adaptados con los datos exactos proporcionados.`
 
   parts.push({ text: prompt })
 
