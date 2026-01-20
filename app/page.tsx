@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { Button } from '@/components/ui'
-import { Sparkles, Zap, Shield, ArrowRight } from 'lucide-react'
+import { Sparkles, Zap, Shield, ArrowRight, Users } from 'lucide-react'
 
 export default function HomePage() {
   return (
@@ -15,14 +15,9 @@ export default function HomePage() {
               </div>
               <span className="text-xl font-bold text-text-primary">Estrategas IA</span>
             </div>
-            <div className="flex items-center gap-4">
-              <Link href="/login">
-                <Button variant="ghost">Iniciar Sesión</Button>
-              </Link>
-              <Link href="/register">
-                <Button>Comenzar Gratis</Button>
-              </Link>
-            </div>
+            <Link href="/login">
+              <Button>Acceder</Button>
+            </Link>
           </div>
         </div>
       </nav>
@@ -31,8 +26,8 @@ export default function HomePage() {
       <section className="pt-32 pb-20 px-4">
         <div className="max-w-7xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-surface border border-border mb-8">
-            <Sparkles className="w-4 h-4 text-accent" />
-            <span className="text-sm text-text-secondary">Potenciado por IA</span>
+            <Users className="w-4 h-4 text-accent" />
+            <span className="text-sm text-text-secondary">Exclusivo para miembros Trucos Ecomm</span>
           </div>
           
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-text-primary mb-6 leading-tight">
@@ -46,19 +41,16 @@ export default function HomePage() {
             Usa tus propias API keys y controla tus costos.
           </p>
           
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link href="/register">
-              <Button size="lg" className="w-full sm:w-auto">
-                Comenzar Gratis
-                <ArrowRight className="ml-2 w-5 h-5" />
-              </Button>
-            </Link>
-            <Link href="/login">
-              <Button variant="secondary" size="lg" className="w-full sm:w-auto">
-                Ya tengo cuenta
-              </Button>
-            </Link>
-          </div>
+          <Link href="/login">
+            <Button size="lg">
+              Acceder con mi correo
+              <ArrowRight className="ml-2 w-5 h-5" />
+            </Button>
+          </Link>
+          
+          <p className="text-sm text-text-secondary mt-4">
+            Recibirás un código de acceso en tu correo
+          </p>
         </div>
       </section>
 
@@ -124,14 +116,14 @@ export default function HomePage() {
       <section className="py-20 px-4 border-t border-border">
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-3xl font-bold text-text-primary mb-4">
-            ¿Listo para crear landings que convierten?
+            ¿Eres miembro de Trucos Ecomm?
           </h2>
           <p className="text-text-secondary mb-8">
-            Únete a la comunidad de dropshippers que ya usan Estrategas IA
+            Accede con el correo registrado en la comunidad y comienza a generar
           </p>
-          <Link href="/register">
+          <Link href="/login">
             <Button size="lg">
-              Crear cuenta gratis
+              Acceder ahora
               <ArrowRight className="ml-2 w-5 h-5" />
             </Button>
           </Link>
@@ -146,16 +138,8 @@ export default function HomePage() {
               <Sparkles className="w-4 h-4 text-background" />
             </div>
             <span className="text-sm text-text-secondary">
-              © 2024 Estrategas IA. Todos los derechos reservados.
+              © 2024 Estrategas IA. Herramienta exclusiva de Trucos Ecomm.
             </span>
-          </div>
-          <div className="flex items-center gap-6">
-            <a href="#" className="text-sm text-text-secondary hover:text-text-primary transition-colors">
-              Términos
-            </a>
-            <a href="#" className="text-sm text-text-secondary hover:text-text-primary transition-colors">
-              Privacidad
-            </a>
           </div>
         </div>
       </footer>
