@@ -2,203 +2,211 @@ import { NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { decrypt } from '@/lib/services/encryption'
 
-// OPTIMIZED SYSTEM PROMPT - Reverse-engineered from Ecom Magic results
-const LANDING_SYSTEM_PROMPT = `You are an expert e-commerce visual designer. Your job is to RECREATE a banner template with a NEW product.
+const COPYWRITING_SYSTEM_PROMPT = `Eres un experto copywriter de e-commerce en español para Latinoamérica.
 
-CRITICAL INSTRUCTION - WHAT TO KEEP EXACTLY THE SAME:
-1. PEOPLE/MODELS: Keep the EXACT same people, poses, body positions, facial expressions, clothing style
-2. LAYOUT: Keep the EXACT same composition - where elements are placed (top, middle, bottom)
-3. DESIGN ELEMENTS: Keep geometric shapes, gradients, diagonal lines, badges, icons in the SAME positions
-4. TYPOGRAPHY STYLE: Keep the same font styles (bold headlines, smaller subtext) in SAME positions
-5. VISUAL FLOW: Keep the same eye movement path through the design
+Tu tarea es generar textos de marketing CORTOS y PODEROSOS para un banner de producto.
 
-CRITICAL INSTRUCTION - WHAT TO CHANGE:
-1. PRODUCT: Replace the product the model is holding/showing with the USER'S PRODUCT (from product photos)
-2. COLOR SCHEME: Change ALL colors to match the user's product packaging colors
-   - Background gradients → match product colors
-   - Accent colors → match product colors  
-   - Text colors → complementary to new scheme
-3. TEXT CONTENT: Generate NEW Spanish sales copy for the user's product
-   - Headlines should be catchy Spanish sales phrases
-   - Subtext should describe the product benefits
-   - Keep text in the SAME positions as template
-4. PRODUCT DETAILS: Show the user's actual product label/branding clearly
+REGLAS CRITICAS:
+- Textos MUY CORTOS (máximo 4-5 palabras por línea)
+- TODO EN MAYUSCULAS para impacto visual
+- Usa palabras que vendan: GRATIS, OFERTA, RESULTADOS, POTENCIA, TRANSFORMA, PREMIUM
+- SIN tildes/acentos (escribir POTENCIA no POTÉNCIA, FORMULA no FÓRMULA)
+- Frases que generen urgencia y deseo
+- Si ves fotos del producto, identifica qué tipo de producto es y genera copy relevante
 
-OUTPUT FORMAT:
-Create a detailed image generation prompt that includes:
-- Exact description of people (gender, age, ethnicity, pose, expression, clothing colors matching new scheme)
-- Exact positions (top third, center, bottom third)  
-- Specific color hex codes or descriptions based on user's product
-- Spanish text with exact placement
-- All decorative elements and their positions
-- Lighting and effects to maintain
+Responde SOLO en JSON con esta estructura exacta:
+{
+  "headline": "TEXTO PRINCIPAL (max 5 palabras, sin tildes)",
+  "subheadline": "SUBTITULO PERSUASIVO (max 6 palabras, sin tildes)", 
+  "cta": "LLAMADO A ACCION (max 3 palabras)",
+  "footer": "BENEFICIO CLAVE (max 6 palabras, sin tildes)"
+}
 
-EXAMPLE TRANSFORMATION:
-Template: Blue/red scheme, man holding protein powder, woman beside him, diagonal stripes
-Result: Red/black scheme (matching new product), SAME man pose/expression, SAME woman pose, SAME diagonal stripes, NEW product in hand, NEW Spanish text`
+EJEMPLOS BUENOS:
+- Headlines: "TRANSFORMA TU CUERPO", "RESULTADOS REALES", "POTENCIA MAXIMA", "BELLEZA NATURAL"
+- Subheadlines: "EN SOLO 30 DIAS", "FORMULA PROFESIONAL", "CALIDAD PREMIUM"
+- CTAs: "COMPRAR AHORA", "LO QUIERO", "PEDIR HOY"
+- Footers: "ENVIO GRATIS + PAGO CONTRAENTREGA", "GARANTIA 100% SATISFACCION"`
 
-// Helper to convert aspect ratio string to Gemini format
 function getAspectRatio(outputSize: string): string {
   if (outputSize === '1080x1920' || outputSize === '9:16') return '9:16'
   if (outputSize === '1080x1080' || outputSize === '1:1') return '1:1'
   if (outputSize === '1920x1080' || outputSize === '16:9') return '16:9'
   if (outputSize === '1080x1350' || outputSize === '4:5') return '4:5'
-  return '9:16' // Default for mobile landing pages
+  return '9:16'
 }
 
-// Call Gemini API for image generation with BOTH template AND product photos
-async function generateImageWithGemini(
-  apiKey: string,
-  prompt: string,
-  aspectRatio: string,
-  templateBase64?: string,
-  templateMimeType?: string,
-  productPhotosBase64?: { data: string; mimeType: string }[]
-): Promise<{ imageBase64: string; mimeType: string } | null> {
-  const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent'
-  
-  // Build the parts array - ORDER MATTERS!
-  const parts: any[] = []
-  
-  // 1. First add template as design reference
-  if (templateBase64 && templateMimeType) {
-    parts.push({
-      inline_data: {
-        mime_type: templateMimeType,
-        data: templateBase64
-      }
-    })
-  }
-  
-  // 2. Add product photos - THE KEY TO PROPER REPLACEMENT
-  if (productPhotosBase64 && productPhotosBase64.length > 0) {
-    for (const photo of productPhotosBase64) {
-      parts.push({
-        inline_data: {
-          mime_type: photo.mimeType,
-          data: photo.data
-        }
-      })
-    }
-  }
-  
-  // 3. Add the prompt with VERY clear instructions
-  const fullPrompt = `RECREATE THIS BANNER WITH A NEW PRODUCT:
-
-IMAGE 1 = DESIGN TEMPLATE - Copy EVERYTHING about this design EXCEPT the product:
-- Copy the EXACT same people/models (poses, expressions, clothing style)
-- Copy the EXACT same layout and element positions
-- Copy the EXACT same design style (shapes, gradients, badges)
-
-IMAGES 2+ = USER'S PRODUCT - This is the NEW product to feature:
-- Replace the template's product with THIS product
-- Adapt ALL colors to match THIS product's packaging
-- Generate Spanish text relevant to THIS product
-
-${prompt}
-
-FINAL REMINDER: The result should look like the SAME photo shoot but with a DIFFERENT product and color scheme.`
-
-  parts.push({ text: fullPrompt })
-
-  const payload = {
-    contents: [{
-      parts: parts
-    }],
-    generationConfig: {
-      responseModalities: ['TEXT', 'IMAGE'],
-    }
-  }
-
-  try {
-    const response = await fetch(`${endpoint}?key=${apiKey}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    })
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error('Gemini Image API error:', errorText)
-      throw new Error(`Gemini API error: ${response.status} - ${errorText}`)
-    }
-
-    const data = await response.json()
-    
-    // Extract image from response
-    const candidates = data.candidates || []
-    for (const candidate of candidates) {
-      const contentParts = candidate.content?.parts || []
-      for (const part of contentParts) {
-        if (part.inlineData?.data) {
-          return {
-            imageBase64: part.inlineData.data,
-            mimeType: part.inlineData.mimeType || 'image/png'
-          }
-        }
-      }
-    }
-    
-    return null
-  } catch (error: any) {
-    console.error('Gemini Image generation error:', error)
-    throw error
-  }
+function parseDataUrl(dataUrl: string): { data: string; mimeType: string } | null {
+  if (!dataUrl.startsWith('data:')) return null
+  const [header, data] = dataUrl.split(',')
+  const mimeType = header.split(':')[1]?.split(';')[0] || 'image/jpeg'
+  return { data, mimeType }
 }
 
-// Call Gemini for prompt enhancement (text only) - includes product photos for analysis
-async function enhancePromptWithGemini(
+// Remove accents from text to avoid rendering issues
+function removeAccents(text: string): string {
+  return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase()
+}
+
+// STEP 1: Generate marketing copy analyzing images + optional user input
+async function generateMarketingCopy(
   apiKey: string,
-  userPrompt: string,
-  templateBase64?: string,
-  templateMimeType?: string,
-  productPhotosBase64?: { data: string; mimeType: string }[]
-): Promise<string> {
+  productName: string,
+  productPhotosBase64: { data: string; mimeType: string }[],
+  creativeControls?: {
+    productDetails?: string
+    salesAngle?: string
+    targetAvatar?: string
+    additionalInstructions?: string
+  }
+): Promise<{ headline: string; subheadline: string; cta: string; footer: string }> {
   const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent'
   
   const parts: any[] = []
   
-  // Add template image first
-  if (templateBase64 && templateMimeType) {
+  // Add product photos for visual analysis
+  for (const photo of productPhotosBase64) {
     parts.push({
-      inline_data: {
-        mime_type: templateMimeType,
-        data: templateBase64
-      }
+      inline_data: { mime_type: photo.mimeType, data: photo.data }
     })
   }
   
-  // Add product photos for analysis
-  if (productPhotosBase64 && productPhotosBase64.length > 0) {
-    for (const photo of productPhotosBase64) {
-      parts.push({
-        inline_data: {
-          mime_type: photo.mimeType,
-          data: photo.data
-        }
-      })
-    }
+  // Build prompt based on available info
+  const hasUserInput = creativeControls?.productDetails || creativeControls?.salesAngle || creativeControls?.targetAvatar
+  
+  let promptText = ''
+  
+  if (hasUserInput) {
+    // User provided info - use it
+    promptText = `Genera textos de marketing para este producto:
+
+NOMBRE: ${productName}
+${creativeControls?.productDetails ? `DESCRIPCION DEL PRODUCTO: ${creativeControls.productDetails}` : ''}
+${creativeControls?.salesAngle ? `ANGULO DE VENTA: ${creativeControls.salesAngle}` : ''}
+${creativeControls?.targetAvatar ? `CLIENTE IDEAL: ${creativeControls.targetAvatar}` : ''}
+${creativeControls?.additionalInstructions ? `INSTRUCCIONES ADICIONALES: ${creativeControls.additionalInstructions}` : ''}
+
+Las imagenes adjuntas son fotos del producto. Usa la informacion proporcionada para crear textos de marketing perfectos.
+
+Genera textos CORTOS, PODEROSOS, en MAYUSCULAS y SIN TILDES.`
+  } else {
+    // No user input - analyze images
+    promptText = `Analiza las imagenes del producto adjuntas y genera textos de marketing.
+
+NOMBRE DEL PRODUCTO: ${productName}
+
+INSTRUCCIONES:
+1. Mira las fotos del producto cuidadosamente
+2. Identifica que tipo de producto es (suplemento, cosmetico, electronico, ropa, etc)
+3. Identifica los colores y estilo del producto
+4. Genera textos de marketing relevantes para ESE tipo de producto
+
+Genera textos CORTOS, PODEROSOS, en MAYUSCULAS y SIN TILDES.
+Los textos deben ser relevantes para lo que VES en las imagenes.`
   }
   
-  parts.push({ text: userPrompt })
+  parts.push({ text: promptText })
 
-  const payload = {
-    systemInstruction: {
-      parts: [{ text: LANDING_SYSTEM_PROMPT }]
-    },
-    contents: [{
-      parts: parts
-    }]
+  try {
+    const response = await fetch(`${endpoint}?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: COPYWRITING_SYSTEM_PROMPT }] },
+        contents: [{ parts }],
+        generationConfig: { responseMimeType: 'application/json' }
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error('API error')
+    }
+
+    const data = await response.json()
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}'
+    
+    const copy = JSON.parse(text)
+    return {
+      headline: removeAccents(copy.headline || 'CALIDAD PREMIUM'),
+      subheadline: removeAccents(copy.subheadline || 'RESULTADOS INCREIBLES'),
+      cta: removeAccents(copy.cta || 'COMPRAR AHORA'),
+      footer: removeAccents(copy.footer || 'ENVIO GRATIS')
+    }
+  } catch (error) {
+    console.error('Copywriting error:', error)
+    // Fallback texts
+    const cleanName = removeAccents(productName).slice(0, 25)
+    return {
+      headline: cleanName,
+      subheadline: 'RESULTADOS GARANTIZADOS',
+      cta: 'COMPRAR AHORA',
+      footer: 'ENVIO GRATIS + PAGO CONTRAENTREGA'
+    }
   }
+}
+
+// STEP 2: Generate image with exact texts
+async function generateImageWithGemini(
+  apiKey: string,
+  templateBase64: string,
+  templateMimeType: string,
+  productPhotosBase64: { data: string; mimeType: string }[],
+  marketingCopy: { headline: string; subheadline: string; cta: string; footer: string },
+  productName: string
+): Promise<{ imageBase64: string; mimeType: string } | null> {
+  const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent'
+  
+  const parts: any[] = []
+  
+  // Add template first
+  parts.push({
+    inline_data: { mime_type: templateMimeType, data: templateBase64 }
+  })
+  
+  // Add product photos
+  for (const photo of productPhotosBase64) {
+    parts.push({
+      inline_data: { mime_type: photo.mimeType, data: photo.data }
+    })
+  }
+  
+  // Prompt with EXACT texts
+  const prompt = `RECREATE THIS BANNER FOR A NEW PRODUCT.
+
+=== IMAGES PROVIDED ===
+IMAGE 1: Design template - copy the EXACT layout, people poses, design elements, visual style
+IMAGES 2+: The NEW product that must appear in the banner
+
+=== PRODUCT ===
+Name: ${productName}
+
+=== CRITICAL: EXACT TEXTS TO WRITE ===
+You MUST write these texts EXACTLY as shown. Copy character by character. Do NOT modify, translate, or change anything:
+
+HEADLINE (large bold text, prominent position): "${marketingCopy.headline}"
+SUBHEADLINE (medium text, below headline): "${marketingCopy.subheadline}"
+CTA (call to action, button style or highlighted): "${marketingCopy.cta}"
+FOOTER (smaller text at bottom): "${marketingCopy.footer}"
+
+=== DESIGN INSTRUCTIONS ===
+1. LAYOUT: Copy the EXACT same layout from the template (positions, composition, visual hierarchy)
+2. PEOPLE/MODELS: Keep the EXACT same people with same poses, expressions, clothing style
+3. PRODUCT: Replace the template's product with the product from images 2+
+4. COLORS: Adapt the color scheme to match the new product's packaging colors
+5. TEXTS: Write the texts EXACTLY as provided above - large, bold, easy to read
+6. QUALITY: Professional e-commerce banner quality, ready to use
+
+IMPORTANT: The texts must be written EXACTLY as provided. Do not add accents, do not change words, do not translate. Copy them exactly.`
+
+  parts.push({ text: prompt })
 
   const response = await fetch(`${endpoint}?key=${apiKey}`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts }],
+      generationConfig: { responseModalities: ['TEXT', 'IMAGE'] }
+    }),
   })
 
   if (!response.ok) {
@@ -207,16 +215,19 @@ async function enhancePromptWithGemini(
   }
 
   const data = await response.json()
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || ''
-  return text
-}
-
-// Helper to convert data URL to base64 object
-function parseDataUrl(dataUrl: string): { data: string; mimeType: string } | null {
-  if (!dataUrl.startsWith('data:')) return null
-  const [header, data] = dataUrl.split(',')
-  const mimeType = header.split(':')[1]?.split(';')[0] || 'image/jpeg'
-  return { data, mimeType }
+  
+  for (const candidate of data.candidates || []) {
+    for (const part of candidate.content?.parts || []) {
+      if (part.inlineData?.data) {
+        return {
+          imageBase64: part.inlineData.data,
+          mimeType: part.inlineData.mimeType || 'image/png'
+        }
+      }
+    }
+  }
+  
+  return null
 }
 
 export async function POST(request: Request) {
@@ -229,15 +240,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { 
-      productId, 
-      productName,
-      templateId,
-      templateUrl,
-      productPhotos,
-      outputSize,
-      creativeControls 
-    } = body
+    const { productId, productName, templateId, templateUrl, productPhotos, outputSize, creativeControls } = body
 
     if (!templateUrl) {
       return NextResponse.json({ error: 'Plantilla requerida' }, { status: 400 })
@@ -247,144 +250,79 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Al menos una foto del producto requerida' }, { status: 400 })
     }
 
-    // Get user's API keys
-    const { data: profile, error: profileError } = await supabase
+    // Get API key
+    const { data: profile } = await supabase
       .from('profiles')
       .select('google_api_key')
       .eq('id', user.id)
       .single()
 
-    if (profileError || !profile?.google_api_key) {
+    if (!profile?.google_api_key) {
       return NextResponse.json({ error: 'Configura tu API key de Google en Settings' }, { status: 400 })
     }
 
-    const googleApiKey = decrypt(profile.google_api_key)
+    const apiKey = decrypt(profile.google_api_key)
 
-    // Fetch and convert template image to base64
-    let templateBase64: string | undefined
-    let templateMimeType: string | undefined
+    // Parse template
+    let templateBase64: string
+    let templateMimeType: string
     
     if (templateUrl.startsWith('data:')) {
       const parsed = parseDataUrl(templateUrl)
-      if (parsed) {
-        templateBase64 = parsed.data
-        templateMimeType = parsed.mimeType
-      }
+      if (!parsed) throw new Error('Invalid template')
+      templateBase64 = parsed.data
+      templateMimeType = parsed.mimeType
     } else {
-      try {
-        const response = await fetch(templateUrl)
-        const buffer = await response.arrayBuffer()
-        templateBase64 = Buffer.from(buffer).toString('base64')
-        templateMimeType = response.headers.get('content-type') || 'image/jpeg'
-      } catch (e) {
-        console.error('Error fetching template:', e)
-        return NextResponse.json({ error: 'Error al cargar plantilla' }, { status: 500 })
-      }
+      const response = await fetch(templateUrl)
+      const buffer = await response.arrayBuffer()
+      templateBase64 = Buffer.from(buffer).toString('base64')
+      templateMimeType = response.headers.get('content-type') || 'image/jpeg'
     }
 
-    // Convert product photos to base64 array
+    // Parse product photos
     const productPhotosBase64: { data: string; mimeType: string }[] = []
     for (const photoUrl of productPhotos) {
-      if (photoUrl.startsWith('data:')) {
+      if (photoUrl?.startsWith('data:')) {
         const parsed = parseDataUrl(photoUrl)
-        if (parsed) {
-          productPhotosBase64.push(parsed)
-        }
+        if (parsed) productPhotosBase64.push(parsed)
       }
     }
 
     if (productPhotosBase64.length === 0) {
-      return NextResponse.json({ error: 'No se pudieron procesar las fotos del producto' }, { status: 400 })
+      return NextResponse.json({ error: 'No se pudieron procesar las fotos' }, { status: 400 })
     }
 
-    // Build the analysis prompt with detailed context
-    const userPrompt = `ANALYZE AND CREATE PROMPT FOR BANNER RECREATION:
+    // ============ STEP 1: Generate Marketing Copy ============
+    console.log('Step 1: Generating marketing copy...')
+    const marketingCopy = await generateMarketingCopy(
+      apiKey,
+      productName,
+      productPhotosBase64,
+      creativeControls
+    )
+    console.log('Generated copy:', marketingCopy)
 
-=== TEMPLATE IMAGE (Image 1) ===
-Analyze this design template carefully:
-- What people/models are shown? (gender, approximate age, ethnicity, pose, expression)
-- What is the layout? (element positions in top/middle/bottom thirds)
-- What colors are used? (background, accents, text)
-- What design elements exist? (shapes, gradients, badges, icons)
-- What is the product being shown?
+    // ============ STEP 2: Generate Image with Exact Texts ============
+    console.log('Step 2: Generating image...')
+    
+    const imageResult = await generateImageWithGemini(
+      apiKey,
+      templateBase64,
+      templateMimeType,
+      productPhotosBase64,
+      marketingCopy,
+      productName
+    )
 
-=== USER'S PRODUCT (Images 2+) ===
-This is the product that must REPLACE the template's product:
-- Product Name: ${productName}
-${creativeControls?.productDetails ? `- Product Details: ${creativeControls.productDetails}` : ''}
-${creativeControls?.salesAngle ? `- Sales Angle: ${creativeControls.salesAngle}` : ''}
-${creativeControls?.targetAvatar ? `- Target Customer: ${creativeControls.targetAvatar}` : ''}
-${creativeControls?.additionalInstructions ? `- Special Instructions: ${creativeControls.additionalInstructions}` : ''}
-
-=== YOUR TASK ===
-Create a DETAILED image generation prompt that will recreate the template with the user's product.
-
-The prompt MUST specify:
-1. KEEP SAME: Exact people descriptions (poses, expressions), layout positions, design element positions
-2. CHANGE TO NEW: Colors matching user's product, the product itself, Spanish sales text
-
-Generate compelling Spanish headlines and subtext for "${productName}".
-
-Output only the image generation prompt, nothing else.`
-
-    // Step 1: Enhance the prompt using Gemini 2.0 Flash with ALL images
-    let enhancedPrompt: string
-    try {
-      enhancedPrompt = await enhancePromptWithGemini(
-        googleApiKey,
-        userPrompt,
-        templateBase64,
-        templateMimeType,
-        productPhotosBase64
-      )
-    } catch (error: any) {
-      console.error('Prompt enhancement error:', error)
-      // Fallback to basic prompt
-      enhancedPrompt = `Professional e-commerce landing page banner for ${productName}. 
-${creativeControls?.productDetails ? `Product: ${creativeControls.productDetails}. ` : ''}
-${creativeControls?.salesAngle ? `Sales angle: ${creativeControls.salesAngle}. ` : ''}
-Modern design with bold typography, clean layout, Spanish sales copy, 
-high quality product photography, gradient background, professional lighting.
-Vertical mobile-optimized layout (9:16 aspect ratio).
-${creativeControls?.additionalInstructions || ''}`
-    }
-
-    // Step 2: Generate image with ALL images (template + product photos)
-    const aspectRatio = getAspectRatio(outputSize)
-    let generatedImageUrl: string | null = null
-
-    try {
-      const imageResult = await generateImageWithGemini(
-        googleApiKey,
-        enhancedPrompt,
-        aspectRatio,
-        templateBase64,
-        templateMimeType,
-        productPhotosBase64 // NOW PASSING PRODUCT PHOTOS!
-      )
-
-      if (imageResult) {
-        generatedImageUrl = `data:${imageResult.mimeType};base64,${imageResult.imageBase64}`
-      }
-    } catch (imageError: any) {
-      console.error('Image generation error:', imageError)
-      
+    if (!imageResult) {
       return NextResponse.json({ 
         success: false,
-        error: `Error generando imagen: ${imageError.message}`,
-        enhancedPrompt: enhancedPrompt,
-        tip: 'Verifica que tu API key de Google tenga acceso a Gemini y facturación habilitada.'
+        error: 'No se pudo generar la imagen',
+        tip: 'Verifica tu API key y facturacion de Google Cloud'
       }, { status: 200 })
     }
 
-    if (!generatedImageUrl) {
-      return NextResponse.json({ 
-        success: false,
-        error: 'No se pudo generar la imagen. Verifica tu configuración de Google Cloud.',
-        enhancedPrompt: enhancedPrompt,
-        tip: 'Asegúrate de tener facturación habilitada en tu proyecto de Google Cloud.'
-      }, { status: 200 })
-    }
+    const generatedImageUrl = `data:${imageResult.mimeType};base64,${imageResult.imageBase64}`
 
     // Save to database
     const serviceClient = await createServiceClient()
@@ -396,42 +334,27 @@ ${creativeControls?.additionalInstructions || ''}`
         template_id: templateId || null,
         output_size: outputSize,
         generated_image_url: generatedImageUrl,
-        prompt_used: enhancedPrompt.substring(0, 4000),
+        prompt_used: JSON.stringify(marketingCopy),
         status: 'completed',
       })
       .select()
       .single()
 
     if (insertError) {
-      console.error('Database insert error:', insertError)
       return NextResponse.json({ 
         success: false,
-        error: `Error guardando sección: ${insertError.message}`,
-        imageUrl: generatedImageUrl,
-        tip: 'La imagen se generó pero no se pudo guardar. Verifica la configuración de la base de datos.'
-      }, { status: 200 })
-    }
-
-    if (!insertedSection) {
-      console.error('No section returned after insert')
-      return NextResponse.json({ 
-        success: false,
-        error: 'Error guardando sección: no se retornó el registro insertado',
-        imageUrl: generatedImageUrl,
-        tip: 'La imagen se generó pero no se pudo guardar correctamente.'
+        error: `Error guardando: ${insertError.message}`,
+        imageUrl: generatedImageUrl
       }, { status: 200 })
     }
 
     return NextResponse.json({
       success: true,
       imageUrl: generatedImageUrl,
-      enhancedPrompt: enhancedPrompt,
-      sectionId: insertedSection.id,
+      sectionId: insertedSection?.id,
     })
   } catch (error: any) {
-    console.error('Generate landing API error:', error)
-    return NextResponse.json({ 
-      error: error.message || 'Error al generar sección' 
-    }, { status: 500 })
+    console.error('Generate error:', error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
