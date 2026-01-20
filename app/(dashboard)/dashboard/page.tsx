@@ -3,6 +3,8 @@ import Link from 'next/link'
 import { Button, Card, CardHeader, CardTitle, CardContent } from '@/components/ui'
 import { ImagePlus, Zap, Clock, Images } from 'lucide-react'
 
+export const dynamic = 'force-dynamic'
+
 export default async function DashboardPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
