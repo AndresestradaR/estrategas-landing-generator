@@ -50,68 +50,84 @@ async function generateImageWithGemini(
     })
   }
   
-  // Build strict replication prompt
+  // Build adaptive creative prompt
   const systemInstruction = {
-    role: "banner_replicator",
-    task: "EXACT_REPLICA_with_product_swap",
-    critical_rules: {
-      KEEP_EXACTLY_THE_SAME: [
-        "ALL human models/people - EXACT same poses, positions, expressions, clothing",
-        "ALL icons and their EXACT positions",
-        "ALL price tags, offer badges, discount labels",
-        "ALL text areas with SAME font sizes and styles",
-        "ALL decorative elements (fruits, splashes, shapes, gradients)",
-        "Footer with trust badges if present",
-        "Background style, colors, and gradients",
-        "Overall composition, layout, and visual hierarchy",
-        "Lighting and shadow styles"
-      ],
-      ONLY_CHANGE_THESE: [
-        "Replace the product/packaging with user's product from images 2+",
-        "Adapt text CONTENT to user's product (but keep SAME font size/style/position)"
-      ],
-      ABSOLUTELY_FORBIDDEN: [
-        "Removing ANY element from the template",
-        "Changing layout or element positions",
-        "Making the design simpler or different",
-        "Changing font sizes or text positions",
-        "Spelling errors in Spanish text",
-        "Gibberish or corrupted text",
-        "Inventing new design elements not in template"
-      ]
+    role: "ecommerce_creative_director",
+    task: "CREATE_STUNNING_BANNER_inspired_by_template",
+    understanding: {
+      image_1: "STYLE REFERENCE - Use this template for inspiration on layout, design quality, and visual style",
+      image_2_plus: "THE ACTUAL PRODUCT - Feature this product prominently with its real packaging and branding"
     },
-    images: {
-      image_1: "MASTER_TEMPLATE - This is your EXACT reference. Copy EVERYTHING except the product.",
-      image_2_plus: "USER_PRODUCT - This product REPLACES the template's product. Show it clearly with its real packaging/labels."
+    creative_approach: {
+      template_usage: "Use as INSPIRATION for quality and style, NOT as exact copy",
+      product_focus: "The new product is the STAR - everything should support selling THIS product",
+      smart_adaptation: [
+        "Generate icons/graphics that make sense for THIS product (e.g., muscle icons for fitness, beauty icons for cosmetics, growth charts for supplements)",
+        "Choose models/people that match the target customer for THIS product",
+        "Select colors that complement THIS product's packaging",
+        "Write compelling text specifically for THIS product's benefits"
+      ]
     },
     product_info: {
       name: productName,
-      details: creativeControls?.productDetails || null,
-      sales_angle: creativeControls?.salesAngle || null,
-      target_customer: creativeControls?.targetAvatar || null,
+      details: creativeControls?.productDetails || "Analyze the product from the photos",
+      sales_angle: creativeControls?.salesAngle || "Create a compelling sales angle based on the product",
+      target_customer: creativeControls?.targetAvatar || "Determine ideal customer from product type",
       special_instructions: creativeControls?.additionalInstructions || null
     },
-    text_rules: {
-      language: "Spanish",
-      style: "UPPERCASE for headlines",
-      quality: "Perfect spelling, NO errors, NO gibberish",
-      sizing: "LARGE and BOLD - same sizes as template"
+    user_instructions_priority: {
+      note: "If the user provides specific instructions in 'special_instructions', FOLLOW THEM EXACTLY",
+      examples: [
+        "If user says 'change girl to guy' -> use a male model",
+        "If user says 'white background' -> use white background",
+        "If user says 'add muscle icons' -> add relevant muscle/fitness icons",
+        "User instructions OVERRIDE template elements"
+      ]
+    },
+    design_requirements: {
+      quality: "Professional, high-end e-commerce quality like top Shopify stores",
+      text: {
+        language: "Spanish",
+        style: "BOLD, UPPERCASE headlines that SELL",
+        content: "Compelling copy specific to THIS product - benefits, offers, CTAs",
+        forbidden: ["spelling errors", "gibberish", "corrupted text", "random letters"]
+      },
+      visual_elements: [
+        "Product shown clearly with real packaging/labels from images 2+",
+        "Relevant icons that support the product's benefits",
+        "Trust badges, offer tags, price displays as appropriate",
+        "Eye-catching but professional color scheme"
+      ]
     },
     output: {
-      type: "EXACT_REPLICA_banner",
-      quality: "indistinguishable_from_template_except_product",
+      type: "sales_ready_banner",
+      quality: "professional_ecommerce",
       aspect_ratio: aspectRatio
     }
   }
 
-  const prompt = `YOU ARE A BANNER REPLICATOR. Your job is to create an EXACT COPY of the template with ONLY the product swapped.
+  const prompt = `You are a TOP E-COMMERCE CREATIVE DIRECTOR creating a banner that SELLS.
 
-INSTRUCTION (JSON):
+CONTEXT:
 ${JSON.stringify(systemInstruction, null, 2)}
 
-CRITICAL: The output should look like the SAME EXACT photo/design - same people, same poses, same icons, same layout, same everything. The ONLY difference is the product shown must be from images 2+.
+YOUR MISSION:
+1. Look at the TEMPLATE (image 1) for STYLE INSPIRATION - quality level, layout ideas, visual approach
+2. Look at the PRODUCT PHOTOS (images 2+) - this is what you're selling
+3. Create a STUNNING banner that would make someone want to BUY this product
 
-Think of it like Photoshop - you're just replacing the product layer, nothing else changes.`
+BE CREATIVE AND SMART:
+- Add icons/graphics that make sense for THIS product (fitness icons for supplements, beauty elements for cosmetics, etc.)
+- Use models/people that match who would BUY this product
+- Write Spanish text that highlights THIS product's specific benefits
+- Make design choices that SUPPORT SELLING this product
+
+${creativeControls?.additionalInstructions ? `
+IMPORTANT - USER'S SPECIFIC INSTRUCTIONS (FOLLOW EXACTLY):
+${creativeControls.additionalInstructions}
+` : ''}
+
+Create a banner so good it could be used by a top e-commerce brand TODAY.`
 
   parts.push({ text: prompt })
 
