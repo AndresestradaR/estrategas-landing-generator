@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { decrypt } from '@/lib/services/encryption'
-import { enhancePrompt, buildBasePrompt } from '@/lib/services/gemini'
-import { generateImage } from '@/lib/services/nanoBanana'
+import { enhancePrompt, buildBasePrompt, generateImage } from '@/lib/services/google-ai'
 
 export async function POST(request: Request) {
   try {
@@ -20,10 +19,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Nombre del producto requerido' }, { status: 400 })
     }
 
-    // Get user's encrypted keys
+    // Get user's encrypted key
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('nano_banana_key, gemini_key, credits_used, credits_limit')
+      .select('google_api_key, credits_used, credits_limit')
       .eq('id', user.id)
       .single()
 
@@ -36,27 +35,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Has alcanzado tu límite de generaciones' }, { status: 403 })
     }
 
-    // Check if user has Nano Banana key
-    if (!profile.nano_banana_key) {
-      return NextResponse.json({ error: 'Configura tu API key de Nano Banana en Settings' }, { status: 400 })
+    // Check if user has Google API key
+    if (!profile.google_api_key) {
+      return NextResponse.json({ error: 'Configura tu API key de Google en Settings' }, { status: 400 })
     }
 
-    // Decrypt keys
-    const nanoBananaKey = decrypt(profile.nano_banana_key)
-    const geminiKey = profile.gemini_key ? decrypt(profile.gemini_key) : null
+    // Decrypt key
+    const googleApiKey = decrypt(profile.google_api_key)
 
-    // Build or enhance prompt
-    let finalPrompt: string
+    // Build base prompt
     let originalPrompt = buildBasePrompt(productName, notes)
+    let finalPrompt: string
 
-    if (geminiKey) {
-      try {
-        finalPrompt = await enhancePrompt(geminiKey, productName, notes)
-      } catch (error) {
-        console.error('Gemini error, using base prompt:', error)
-        finalPrompt = originalPrompt
-      }
-    } else {
+    // Try to enhance prompt with Gemini
+    try {
+      finalPrompt = await enhancePrompt(googleApiKey, productName, notes)
+    } catch (error) {
+      console.error('Gemini enhancement error, using base prompt:', error)
       finalPrompt = originalPrompt
     }
 
@@ -79,8 +74,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Error al crear generación' }, { status: 500 })
     }
 
-    // Generate image with Nano Banana
-    const result = await generateImage(nanoBananaKey, { prompt: finalPrompt })
+    // Generate image with Nano Banana Pro (Google's image model)
+    const result = await generateImage(googleApiKey, finalPrompt)
 
     if (!result.success || !result.imageUrl) {
       // Update generation as failed
