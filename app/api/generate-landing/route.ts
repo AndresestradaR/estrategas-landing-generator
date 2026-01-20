@@ -109,9 +109,9 @@ Create a detailed prompt that describes how to recreate this template design but
       }
     }
 
-    // Use gemini-1.5-flash-latest (correct model name with vision capabilities)
+    // Use gemini-2.0-flash (current stable model with vision)
     const model = genAI.getGenerativeModel({ 
-      model: 'gemini-1.5-flash-latest',
+      model: 'gemini-2.0-flash',
       systemInstruction: LANDING_SYSTEM_PROMPT,
     })
 
