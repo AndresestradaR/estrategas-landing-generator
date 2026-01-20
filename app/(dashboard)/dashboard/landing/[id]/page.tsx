@@ -326,7 +326,10 @@ export default function ProductGeneratePage() {
     }
   }
 
-  const handleDeleteSection = async (sectionId: string) => {
+  const handleDeleteSection = async (sectionId: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation()
+    }
     if (!confirm('¿Eliminar esta sección?')) return
 
     try {
@@ -644,27 +647,42 @@ export default function ProductGeneratePage() {
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                   {sections.map((section) => (
-                    <button
-                      key={section.id}
-                      onClick={() => {
-                        setSelectedSection(section)
-                        setShowSectionModal(true)
-                      }}
-                      className="group relative aspect-[9/16] rounded-xl overflow-hidden border border-border hover:border-accent/50 transition-all"
-                    >
-                      <img
-                        src={section.generated_image_url}
-                        alt="Sección generada"
-                        className="w-full h-full object-cover"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                      <div className="absolute bottom-2 left-2 right-2 flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <span className="text-xs text-white bg-black/50 px-2 py-1 rounded">
-                          <Eye className="w-3 h-3 inline mr-1" />
-                          Ver
-                        </span>
+                    <div key={section.id} className="flex flex-col">
+                      {/* Thumbnail - Clickable to open modal */}
+                      <div 
+                        onClick={() => {
+                          setSelectedSection(section)
+                          setShowSectionModal(true)
+                        }}
+                        className="cursor-pointer aspect-[9/16] rounded-xl overflow-hidden border border-border hover:border-accent/50 transition-all bg-surface"
+                      >
+                        <img
+                          src={section.generated_image_url}
+                          alt="Sección generada"
+                          className="w-full h-full object-cover"
+                        />
                       </div>
-                    </button>
+                      
+                      {/* Action buttons below thumbnail */}
+                      <div className="flex items-center justify-center gap-2 mt-2">
+                        <button
+                          onClick={() => {
+                            setSelectedSection(section)
+                            setShowSectionModal(true)
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-surface border border-border rounded-lg hover:border-accent/50 hover:bg-accent/5 transition-colors text-sm text-text-secondary hover:text-text-primary"
+                        >
+                          <Eye className="w-4 h-4" />
+                          <span>Ver Banner</span>
+                        </button>
+                        <button
+                          onClick={(e) => handleDeleteSection(section.id, e)}
+                          className="p-1.5 bg-surface border border-border rounded-lg hover:border-error/50 hover:bg-error/10 hover:text-error transition-colors text-text-secondary"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -807,7 +825,7 @@ export default function ProductGeneratePage() {
           />
           <div className="relative w-full max-w-5xl max-h-[90vh] bg-surface rounded-2xl overflow-hidden z-10 flex">
             {/* Left side - Options */}
-            <div className="w-80 border-r border-border p-6 flex flex-col">
+            <div className="w-80 border-r border-border p-6 flex flex-col shrink-0">
               <h2 className="text-xl font-bold text-text-primary mb-6">Sección generada</h2>
               
               <div className="space-y-3 flex-1">
@@ -844,7 +862,7 @@ export default function ProductGeneratePage() {
                   className="w-full flex items-center gap-3 px-4 py-3 bg-green-500/10 border border-green-500/30 rounded-xl hover:bg-green-500/20 transition-colors"
                 >
                   <MessageCircle className="w-5 h-5 text-green-500" />
-                  <span className="text-green-500">Compartir por WhatsApp</span>
+                  <span className="text-green-500">Compartir (+1 Crédito)</span>
                 </button>
               </div>
 
@@ -861,21 +879,12 @@ export default function ProductGeneratePage() {
                   </div>
                 </div>
               )}
-
-              {/* Delete button */}
-              <button
-                onClick={() => handleDeleteSection(selectedSection.id)}
-                className="mt-4 flex items-center justify-center gap-2 text-error hover:bg-error/10 py-2 rounded-lg transition-colors"
-              >
-                <Trash2 className="w-4 h-4" />
-                <span className="text-sm">Eliminar sección</span>
-              </button>
             </div>
 
             {/* Right side - Image Preview */}
-            <div className="flex-1 p-6 flex flex-col">
+            <div className="flex-1 p-6 flex flex-col min-w-0">
               <div className="flex items-center justify-between mb-4">
-                <span className="px-3 py-1 bg-accent/10 text-accent rounded-full text-sm font-medium">
+                <span className="px-3 py-1 bg-accent/10 text-accent rounded-full text-sm font-medium capitalize">
                   {selectedSection.template?.category || 'Hero'} Section
                 </span>
                 <button
@@ -907,8 +916,8 @@ export default function ProductGeneratePage() {
           />
           <div className="relative w-full max-w-5xl max-h-[90vh] bg-surface rounded-2xl overflow-hidden z-10 flex">
             {/* Left side - Edit Form */}
-            <div className="w-80 border-r border-border p-6 flex flex-col">
-              <h2 className="text-xl font-bold text-text-primary mb-2">Sección generada</h2>
+            <div className="w-80 border-r border-border p-6 flex flex-col shrink-0">
+              <h2 className="text-xl font-bold text-text-primary mb-2">Editar Sección</h2>
               
               {/* Edit Instruction */}
               <div className="mb-4">
@@ -992,9 +1001,9 @@ export default function ProductGeneratePage() {
             </div>
 
             {/* Right side - Image Preview */}
-            <div className="flex-1 p-6 flex flex-col">
+            <div className="flex-1 p-6 flex flex-col min-w-0">
               <div className="flex items-center justify-between mb-4">
-                <span className="px-3 py-1 bg-accent/10 text-accent rounded-full text-sm font-medium">
+                <span className="px-3 py-1 bg-accent/10 text-accent rounded-full text-sm font-medium capitalize">
                   {selectedSection.template?.category || 'Hero'} Section
                 </span>
                 <button
