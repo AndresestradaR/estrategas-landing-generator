@@ -8,10 +8,8 @@ import toast from 'react-hot-toast'
 export const dynamic = 'force-dynamic'
 
 export default function SettingsPage() {
-  const [nanoBananaKey, setNanoBananaKey] = useState('')
-  const [geminiKey, setGeminiKey] = useState('')
-  const [hasNanoBananaKey, setHasNanoBananaKey] = useState(false)
-  const [hasGeminiKey, setHasGeminiKey] = useState(false)
+  const [googleApiKey, setGoogleApiKey] = useState('')
+  const [hasGoogleApiKey, setHasGoogleApiKey] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -23,10 +21,8 @@ export default function SettingsPage() {
     try {
       const response = await fetch('/api/keys')
       const data = await response.json()
-      if (data.hasNanoBananaKey) setHasNanoBananaKey(true)
-      if (data.hasGeminiKey) setHasGeminiKey(true)
-      if (data.maskedNanoBananaKey) setNanoBananaKey(data.maskedNanoBananaKey)
-      if (data.maskedGeminiKey) setGeminiKey(data.maskedGeminiKey)
+      if (data.hasGoogleApiKey) setHasGoogleApiKey(true)
+      if (data.maskedGoogleApiKey) setGoogleApiKey(data.maskedGoogleApiKey)
     } catch (error) {
       console.error('Error fetching keys:', error)
     } finally {
@@ -38,25 +34,16 @@ export default function SettingsPage() {
     setIsSaving(true)
 
     try {
-      const body: any = {}
-      
-      // Only send keys that don't look like masked values
-      if (nanoBananaKey && !nanoBananaKey.includes('•')) {
-        body.nanoBananaKey = nanoBananaKey
-      }
-      if (geminiKey && !geminiKey.includes('•')) {
-        body.geminiKey = geminiKey
-      }
-
-      if (Object.keys(body).length === 0) {
-        toast.error('Ingresa al menos una API key nueva')
+      // Only send key if it doesn't look like a masked value
+      if (!googleApiKey || googleApiKey.includes('•')) {
+        toast.error('Ingresa tu API key de Google')
         return
       }
 
       const response = await fetch('/api/keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ googleApiKey }),
       })
 
       const data = await response.json()
@@ -65,8 +52,8 @@ export default function SettingsPage() {
         throw new Error(data.error || 'Error al guardar')
       }
 
-      toast.success('API keys guardadas correctamente')
-      fetchKeys() // Refresh the masked keys
+      toast.success('API key guardada correctamente')
+      fetchKeys() // Refresh the masked key
     } catch (error: any) {
       toast.error(error.message || 'Error al guardar')
     } finally {
@@ -87,7 +74,7 @@ export default function SettingsPage() {
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-text-primary">Configuración</h1>
         <p className="text-text-secondary mt-1">
-          Configura tus API keys para comenzar a generar
+          Configura tu API key para comenzar a generar
         </p>
       </div>
 
@@ -95,21 +82,21 @@ export default function SettingsPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Key className="w-5 h-5" />
-            API Keys
+            Google AI API Key
           </CardTitle>
           <CardDescription>
-            Ingresa tus propias API keys. Tus keys se encriptan y almacenan de forma segura.
+            Tu API key de Google AI Studio. Se usa para generar imágenes (Nano Banana Pro) y mejorar prompts (Gemini).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Nano Banana Key */}
+          {/* Google API Key */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-sm font-medium text-text-primary">
-                Nano Banana API Key
+                API Key
                 <span className="text-error"> *</span>
               </label>
-              {hasNanoBananaKey && (
+              {hasGoogleApiKey && (
                 <span className="flex items-center gap-1 text-xs text-success">
                   <Check className="w-3 h-3" />
                   Configurada
@@ -118,43 +105,10 @@ export default function SettingsPage() {
             </div>
             <Input
               type="password"
-              placeholder="nb_xxxxxxxxxxxxxxxx"
-              value={nanoBananaKey}
-              onChange={(e) => setNanoBananaKey(e.target.value)}
+              placeholder="AIzaSy..."
+              value={googleApiKey}
+              onChange={(e) => setGoogleApiKey(e.target.value)}
             />
-            <a 
-              href="https://nanobanana.ai/dashboard" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-accent hover:text-accent-hover transition-colors"
-            >
-              Obtener API Key <ExternalLink className="w-3 h-3" />
-            </a>
-          </div>
-
-          {/* Gemini Key */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-text-primary">
-                Google Gemini API Key
-                <span className="text-text-secondary text-xs ml-1">(opcional)</span>
-              </label>
-              {hasGeminiKey && (
-                <span className="flex items-center gap-1 text-xs text-success">
-                  <Check className="w-3 h-3" />
-                  Configurada
-                </span>
-              )}
-            </div>
-            <Input
-              type="password"
-              placeholder="AIzaXxxxxxxxxxxxxxxxx"
-              value={geminiKey}
-              onChange={(e) => setGeminiKey(e.target.value)}
-            />
-            <p className="text-xs text-text-secondary">
-              Mejora los prompts automáticamente con IA
-            </p>
             <a 
               href="https://aistudio.google.com/app/apikey" 
               target="_blank" 
@@ -170,7 +124,7 @@ export default function SettingsPage() {
             onClick={handleSave}
             isLoading={isSaving}
           >
-            Guardar API Keys
+            Guardar API Key
           </Button>
         </CardContent>
       </Card>
@@ -178,11 +132,27 @@ export default function SettingsPage() {
       {/* Info Card */}
       <Card className="mt-6" variant="glass">
         <CardContent className="pt-6">
-          <h3 className="font-medium text-text-primary mb-2">¿Por qué necesito mis propias keys?</h3>
+          <h3 className="font-medium text-text-primary mb-2">¿Qué incluye?</h3>
+          <ul className="text-sm text-text-secondary space-y-2">
+            <li className="flex items-start gap-2">
+              <span className="text-accent">•</span>
+              <span><strong>Nano Banana Pro</strong> - Generación de imágenes de alta calidad para tus landings</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-accent">•</span>
+              <span><strong>Gemini</strong> - Mejora automática de prompts para mejores resultados</span>
+            </li>
+          </ul>
+        </CardContent>
+      </Card>
+
+      {/* BYOK Info */}
+      <Card className="mt-4" variant="glass">
+        <CardContent className="pt-6">
+          <h3 className="font-medium text-text-primary mb-2">¿Por qué necesito mi propia key?</h3>
           <p className="text-sm text-text-secondary">
             Estrategas IA utiliza el modelo BYOK (Bring Your Own Key) para darte control total 
-            sobre tus costos y uso. Solo pagas lo que consumes directamente a los proveedores 
-            de IA, sin intermediarios ni markups.
+            sobre tus costos. Solo pagas lo que consumes directamente a Google, sin intermediarios.
           </p>
         </CardContent>
       </Card>
