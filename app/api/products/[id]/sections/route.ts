@@ -3,17 +3,17 @@ import { createClient, createServiceClient } from '@/lib/supabase/server'
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: productId } = await context.params
+
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
-
-    const { id: productId } = params
 
     // Use service client to bypass RLS issues
     const serviceClient = await createServiceClient()
@@ -59,7 +59,10 @@ export async function GET(
       })
     )
 
-    return NextResponse.json({ sections: sectionsWithTemplates })
+    return NextResponse.json(
+      { sections: sectionsWithTemplates },
+      { headers: { 'Cache-Control': 'no-store, max-age=0' } }
+    )
   } catch (error: any) {
     console.error('Sections API error:', error)
     return NextResponse.json({ 
