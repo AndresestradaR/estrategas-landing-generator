@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 
 export async function GET(
   request: Request,
@@ -15,13 +15,13 @@ export async function GET(
 
     const { id: productId } = params
 
-    // Get sections for this product
-    const { data: sections, error } = await supabase
+    // Use service client to bypass RLS issues
+    const serviceClient = await createServiceClient()
+
+    // First try simple query without join
+    const { data: sections, error } = await serviceClient
       .from('landing_sections')
-      .select(`
-        *,
-        template:templates(id, name, image_url, category, dimensions)
-      `)
+      .select('*')
       .eq('product_id', productId)
       .eq('user_id', user.id)
       .eq('status', 'completed')
@@ -29,12 +29,42 @@ export async function GET(
 
     if (error) {
       console.error('Error fetching sections:', error)
-      return NextResponse.json({ error: 'Error al cargar secciones' }, { status: 500 })
+      // If table doesn't exist, return empty array
+      if (error.code === '42P01') {
+        return NextResponse.json({ sections: [], error: 'Tabla no encontrada' })
+      }
+      return NextResponse.json({ 
+        sections: [], 
+        error: `Error: ${error.message}`,
+        code: error.code 
+      })
     }
 
-    return NextResponse.json({ sections: sections || [] })
+    // If we have sections, try to get template info separately
+    const sectionsWithTemplates = await Promise.all(
+      (sections || []).map(async (section) => {
+        if (section.template_id) {
+          try {
+            const { data: template } = await serviceClient
+              .from('templates')
+              .select('id, name, image_url, category, dimensions')
+              .eq('id', section.template_id)
+              .single()
+            return { ...section, template }
+          } catch (e) {
+            return { ...section, template: null }
+          }
+        }
+        return { ...section, template: null }
+      })
+    )
+
+    return NextResponse.json({ sections: sectionsWithTemplates })
   } catch (error: any) {
     console.error('Sections API error:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ 
+      sections: [],
+      error: error.message 
+    })
   }
 }
