@@ -50,13 +50,39 @@ async function generateImageWithGemini(
     })
   }
   
-  // Build structured JSON prompt
+  // Build strict replication prompt
   const systemInstruction = {
-    role: "professional_banner_designer",
-    task: "recreate_banner_with_new_product",
+    role: "banner_replicator",
+    task: "EXACT_REPLICA_with_product_swap",
+    critical_rules: {
+      KEEP_EXACTLY_THE_SAME: [
+        "ALL human models/people - EXACT same poses, positions, expressions, clothing",
+        "ALL icons and their EXACT positions",
+        "ALL price tags, offer badges, discount labels",
+        "ALL text areas with SAME font sizes and styles",
+        "ALL decorative elements (fruits, splashes, shapes, gradients)",
+        "Footer with trust badges if present",
+        "Background style, colors, and gradients",
+        "Overall composition, layout, and visual hierarchy",
+        "Lighting and shadow styles"
+      ],
+      ONLY_CHANGE_THESE: [
+        "Replace the product/packaging with user's product from images 2+",
+        "Adapt text CONTENT to user's product (but keep SAME font size/style/position)"
+      ],
+      ABSOLUTELY_FORBIDDEN: [
+        "Removing ANY element from the template",
+        "Changing layout or element positions",
+        "Making the design simpler or different",
+        "Changing font sizes or text positions",
+        "Spelling errors in Spanish text",
+        "Gibberish or corrupted text",
+        "Inventing new design elements not in template"
+      ]
+    },
     images: {
-      image_1: "DESIGN_TEMPLATE_ONLY - Use for layout, style, colors, positioning. IGNORE the product shown.",
-      image_2_plus: "ACTUAL_PRODUCT - This is the ONLY product to feature in the output."
+      image_1: "MASTER_TEMPLATE - This is your EXACT reference. Copy EVERYTHING except the product.",
+      image_2_plus: "USER_PRODUCT - This product REPLACES the template's product. Show it clearly with its real packaging/labels."
     },
     product_info: {
       name: productName,
@@ -65,35 +91,27 @@ async function generateImageWithGemini(
       target_customer: creativeControls?.targetAvatar || null,
       special_instructions: creativeControls?.additionalInstructions || null
     },
-    strict_rules: {
-      product_replacement: {
-        priority: "CRITICAL",
-        instruction: "COMPLETELY REPLACE template product with user's product from images 2+",
-        preserve: ["product_packaging", "product_labels", "product_branding"]
-      },
-      text_generation: {
-        language: "Spanish",
-        style: "UPPERCASE_HEADLINES",
-        font_size: "LARGE_AND_BOLD",
-        requirements: ["NO_SPELLING_ERRORS", "HIGH_CONTRAST", "CLEARLY_READABLE"],
-        forbidden: ["gibberish", "random_letters", "corrupted_text", "english_words"]
-      },
-      design: {
-        copy_from_template: ["layout", "positioning", "decorative_elements", "style"],
-        adapt_to_product: ["color_scheme", "mood"]
-      }
+    text_rules: {
+      language: "Spanish",
+      style: "UPPERCASE for headlines",
+      quality: "Perfect spelling, NO errors, NO gibberish",
+      sizing: "LARGE and BOLD - same sizes as template"
     },
     output: {
-      type: "professional_ecommerce_banner",
-      quality: "production_ready",
+      type: "EXACT_REPLICA_banner",
+      quality: "indistinguishable_from_template_except_product",
       aspect_ratio: aspectRatio
     }
   }
 
-  const prompt = `SYSTEM INSTRUCTION (JSON):
+  const prompt = `YOU ARE A BANNER REPLICATOR. Your job is to create an EXACT COPY of the template with ONLY the product swapped.
+
+INSTRUCTION (JSON):
 ${JSON.stringify(systemInstruction, null, 2)}
 
-Execute the task defined above. The product from images 2+ must be the STAR of the final banner.`
+CRITICAL: The output should look like the SAME EXACT photo/design - same people, same poses, same icons, same layout, same everything. The ONLY difference is the product shown must be from images 2+.
+
+Think of it like Photoshop - you're just replacing the product layer, nothing else changes.`
 
   parts.push({ text: prompt })
 
