@@ -81,6 +81,7 @@ export default function ProductGeneratePage() {
   const [product, setProduct] = useState<Product | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [isSharing, setIsSharing] = useState(false)
   
   // Template state
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
@@ -292,10 +293,41 @@ export default function ProductGeneratePage() {
     }
   }
 
-  const handleShareWhatsApp = (section: GeneratedSection) => {
-    const text = encodeURIComponent(`¡Mira esta sección de landing que generé con IA para ${product?.name}!`)
-    window.open(`https://wa.me/?text=${text}`, '_blank')
-    toast.success('Abriendo WhatsApp...')
+  const handleShareWhatsApp = async (section: GeneratedSection) => {
+    setIsSharing(true)
+    toast.loading('Preparando imagen para WhatsApp...', { id: 'share' })
+    
+    try {
+      const response = await fetch('/api/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sectionId: section.id,
+          imageBase64: section.generated_image_url,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Error al subir imagen')
+      }
+
+      const message = encodeURIComponent(
+        `🚀 ¡Mira este banner que generé con IA!\n\n` +
+        `📦 Producto: ${product?.name}\n` +
+        `🎨 Creado con Estrategas IA\n\n` +
+        `${data.publicUrl}`
+      )
+      
+      window.open(`https://wa.me/?text=${message}`, '_blank')
+      toast.success('¡Abriendo WhatsApp!', { id: 'share' })
+    } catch (error: any) {
+      console.error('Share error:', error)
+      toast.error(error.message || 'Error al compartir', { id: 'share' })
+    } finally {
+      setIsSharing(false)
+    }
   }
 
   const handleEdit = async () => {
@@ -871,10 +903,11 @@ export default function ProductGeneratePage() {
                 {/* Share WhatsApp */}
                 <button
                   onClick={() => handleShareWhatsApp(selectedSection)}
-                  className="w-full flex items-center gap-3 px-4 py-3 bg-green-500/10 border border-green-500/30 rounded-xl hover:bg-green-500/20 transition-colors"
+                  disabled={isSharing}
+                  className="w-full flex items-center gap-3 px-4 py-3 bg-green-500/10 border border-green-500/30 rounded-xl hover:bg-green-500/20 transition-colors disabled:opacity-50"
                 >
                   <MessageCircle className="w-5 h-5 text-green-500" />
-                  <span className="text-green-500">Compartir (+1 Crédito)</span>
+                  <span className="text-green-500">Compartir por WhatsApp</span>
                 </button>
               </div>
 
