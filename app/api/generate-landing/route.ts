@@ -3,29 +3,24 @@ import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { decrypt } from '@/lib/services/encryption'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
-const LANDING_SYSTEM_PROMPT = `You are an expert e-commerce landing page designer and image generator. Your task is to create professional, high-converting landing page sections by combining a reference template design with the user's product.
+const LANDING_SYSTEM_PROMPT = `You are an expert e-commerce landing page designer. Your task is to create a detailed prompt for generating professional, high-converting landing page section images.
 
 CRITICAL RULES:
-1. MAINTAIN the exact visual style, layout structure, colors, and design elements from the reference template
-2. REPLACE the product in the template with the user's product, maintaining similar positioning and scale
-3. GENERATE relevant, compelling sales copy in Spanish that matches the product and target audience
-4. KEEP the same visual hierarchy, typography style, and graphic elements (badges, icons, decorative elements)
-5. ENSURE the final image looks professional, polished, and ready for a real landing page
-6. NEVER add watermarks, signatures, or AI-generated artifacts
-7. MATCH the energy and style of the original template (if it's bold and dynamic, keep that energy)
+1. ANALYZE the reference template's design, layout structure, colors, and design elements
+2. CREATE a detailed prompt that will REPLACE the product with the user's product
+3. GENERATE relevant, compelling sales copy suggestions in Spanish
+4. KEEP the same visual hierarchy, typography style, and graphic elements
+5. ENSURE the prompt describes a professional, polished landing page section
 
-FOR TEXT GENERATION:
-- Write all text in Spanish
-- Create headlines that grab attention and highlight the main benefit
-- Use persuasive copywriting techniques (urgency, social proof, benefits over features)
-- Keep text concise and impactful
-- Match the tone to the product (professional for health products, exciting for fitness, etc.)
+OUTPUT FORMAT:
+Return ONLY a detailed image generation prompt in English that describes:
+- The exact layout and composition from the template
+- The user's product positioned like in the template
+- Colors and design elements to maintain
+- Spanish text suggestions for headlines and copy
+- Professional e-commerce quality standards
 
-OUTPUT REQUIREMENTS:
-- High resolution, sharp and clear
-- Professional e-commerce quality
-- Ready to use in GemPages, Shopify, or any landing page builder
-- Clean composition with proper spacing`
+Be extremely specific and detailed for best results with image generation AI.`
 
 export async function POST(request: Request) {
   try {
@@ -55,10 +50,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Al menos una foto del producto requerida' }, { status: 400 })
     }
 
-    // Get user's API key
+    // Get user's API keys
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('google_api_key')
+      .select('google_api_key, nano_banana_key')
       .eq('id', user.id)
       .single()
 
@@ -67,30 +62,23 @@ export async function POST(request: Request) {
     }
 
     const googleApiKey = decrypt(profile.google_api_key)
+    const nanoBananaKey = profile.nano_banana_key ? decrypt(profile.nano_banana_key) : null
 
-    // Build the prompt
-    let userPrompt = `Create a professional landing page section image.
+    // Build the analysis prompt
+    let userPrompt = `Analyze this landing page template and create a detailed image generation prompt.
 
-REFERENCE TEMPLATE: I'm providing a template image that shows the exact style, layout, and design I want.
-
-PRODUCT: ${productName}
+PRODUCT TO FEATURE: ${productName}
 ${creativeControls?.productDetails ? `PRODUCT DETAILS: ${creativeControls.productDetails}` : ''}
 ${creativeControls?.salesAngle ? `SALES ANGLE: ${creativeControls.salesAngle}` : ''}
 ${creativeControls?.targetAvatar ? `TARGET CUSTOMER: ${creativeControls.targetAvatar}` : ''}
-${creativeControls?.additionalInstructions ? `ADDITIONAL INSTRUCTIONS: ${creativeControls.additionalInstructions}` : ''}
+${creativeControls?.additionalInstructions ? `STYLE NOTES: ${creativeControls.additionalInstructions}` : ''}
 
-TASK: 
-1. Analyze the reference template's design, layout, colors, and style
-2. Replace the product shown with MY product (see product photos)
-3. Generate new Spanish text that sells MY product while maintaining the template's visual style
-4. Create a final image that looks like it was professionally designed for MY product
+Create a detailed prompt that describes how to recreate this template design but featuring the product above. Include specific details about layout, colors, text placement, and styling. The generated image should look professional and ready for a real e-commerce landing page.`
 
-The result should look like the template was originally made for my product - professional, cohesive, and ready for a real landing page.`
-
-    // Generate with Nano Banana Pro
+    // Use Gemini to analyze template and create prompt
     const genAI = new GoogleGenerativeAI(googleApiKey)
     
-    // Prepare image parts
+    // Prepare image parts for analysis
     const imageParts = []
     
     // Add template image
@@ -104,7 +92,6 @@ The result should look like the template was originally made for my product - pr
         }
       })
     } else {
-      // Fetch external URL and convert to base64
       try {
         const response = await fetch(templateUrl)
         const buffer = await response.arrayBuffer()
@@ -122,55 +109,75 @@ The result should look like the template was originally made for my product - pr
       }
     }
 
-    // Add product photos
-    for (const photo of productPhotos) {
-      if (photo.startsWith('data:')) {
-        const base64Data = photo.split(',')[1]
-        const mimeType = photo.split(';')[0].split(':')[1]
-        imageParts.push({
-          inlineData: {
-            data: base64Data,
-            mimeType: mimeType
-          }
-        })
-      }
-    }
-
+    // Use gemini-1.5-flash for better quota (vision model for analyzing template)
     const model = genAI.getGenerativeModel({ 
-      model: 'gemini-2.0-flash-exp',
+      model: 'gemini-1.5-flash',
       systemInstruction: LANDING_SYSTEM_PROMPT,
     })
 
-    const result = await model.generateContent([
-      userPrompt,
-      ...imageParts
-    ])
+    let enhancedPrompt: string
 
-    const response = await result.response
-    const parts = response.candidates?.[0]?.content?.parts || []
-    
-    let generatedImageUrl = null
-    
-    for (const part of parts) {
-      if (part.inlineData?.mimeType?.startsWith('image/')) {
-        generatedImageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`
-        break
+    try {
+      const result = await model.generateContent([
+        userPrompt,
+        ...imageParts
+      ])
+
+      const response = await result.response
+      enhancedPrompt = response.text()
+    } catch (geminiError: any) {
+      console.error('Gemini error:', geminiError)
+      
+      // If Gemini fails, create a basic prompt
+      if (geminiError.message?.includes('quota') || geminiError.message?.includes('429')) {
+        // Build fallback prompt without AI
+        enhancedPrompt = `Professional e-commerce landing page section featuring ${productName}. 
+${creativeControls?.productDetails ? `Product: ${creativeControls.productDetails}. ` : ''}
+${creativeControls?.salesAngle ? `Sales angle: ${creativeControls.salesAngle}. ` : ''}
+Modern design, clean layout, Spanish sales copy, high quality product photography, 
+gradient background, professional lighting, ready for landing page use.
+${creativeControls?.additionalInstructions || ''}`
+      } else {
+        return NextResponse.json({ 
+          error: `Error de Google AI: ${geminiError.message}` 
+        }, { status: 500 })
       }
     }
 
-    if (!generatedImageUrl) {
-      // If no image, try with imagen model
-      const imagenModel = genAI.getGenerativeModel({ model: 'imagen-3.0-generate-002' })
-      
-      // Create a text-only prompt for Imagen
-      const imagenPrompt = `${LANDING_SYSTEM_PROMPT}
+    // Now generate image with Nano Banana if available
+    let generatedImageUrl = null
 
-${userPrompt}
-
-Style: Professional e-commerce landing page section, high quality, clean design, modern layout, compelling Spanish sales copy visible in the image.`
-      
+    if (nanoBananaKey) {
       try {
-        const imagenResult = await imagenModel.generateContent(imagenPrompt)
+        const nanoBananaResponse = await fetch('https://api.nanobanana.net/v1/generate', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${nanoBananaKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            prompt: enhancedPrompt,
+            aspect_ratio: outputSize === '1080x1920' ? '9:16' : '1:1',
+            style: 'professional',
+          }),
+        })
+
+        if (nanoBananaResponse.ok) {
+          const nanoBananaData = await nanoBananaResponse.json()
+          generatedImageUrl = nanoBananaData.image_url || nanoBananaData.url
+        } else {
+          console.error('Nano Banana error:', await nanoBananaResponse.text())
+        }
+      } catch (nbError) {
+        console.error('Nano Banana error:', nbError)
+      }
+    }
+
+    // If no Nano Banana or it failed, try Imagen (if available)
+    if (!generatedImageUrl) {
+      try {
+        const imagenModel = genAI.getGenerativeModel({ model: 'imagen-3.0-generate-002' })
+        const imagenResult = await imagenModel.generateContent(enhancedPrompt)
         const imagenResponse = await imagenResult.response
         const imagenParts = imagenResponse.candidates?.[0]?.content?.parts || []
         
@@ -180,15 +187,20 @@ Style: Professional e-commerce landing page section, high quality, clean design,
             break
           }
         }
-      } catch (imagenError) {
-        console.error('Imagen model error:', imagenError)
+      } catch (imagenError: any) {
+        console.error('Imagen model error:', imagenError.message)
       }
     }
 
+    // Return enhanced prompt even if image generation failed
+    // This way the user can use the prompt elsewhere
     if (!generatedImageUrl) {
       return NextResponse.json({ 
-        error: 'No se pudo generar la imagen. Intenta con otra plantilla o fotos diferentes.' 
-      }, { status: 500 })
+        success: false,
+        error: 'No se pudo generar la imagen. Configura tu API key de Nano Banana en Settings para mejor calidad.',
+        enhancedPrompt: enhancedPrompt,
+        tip: 'Puedes usar este prompt en otra herramienta de generación de imágenes.'
+      }, { status: 200 }) // 200 because we have useful data
     }
 
     // Save to database
@@ -200,14 +212,15 @@ Style: Professional e-commerce landing page section, high quality, clean design,
         user_id: user.id,
         template_id: templateId || null,
         output_size: outputSize,
-        generated_image_url: generatedImageUrl.substring(0, 100) + '...', // Store truncated for DB
-        prompt_used: userPrompt.substring(0, 1000),
+        generated_image_url: generatedImageUrl.substring(0, 500),
+        prompt_used: enhancedPrompt.substring(0, 2000),
         status: 'completed',
       })
 
     return NextResponse.json({
       success: true,
       imageUrl: generatedImageUrl,
+      enhancedPrompt: enhancedPrompt,
     })
   } catch (error: any) {
     console.error('Generate landing API error:', error)
