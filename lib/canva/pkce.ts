@@ -40,9 +40,5 @@ export const CANVA_CONFIG = {
   tokenEndpoint: 'https://api.canva.com/rest/v1/oauth/token',
   assetUploadEndpoint: 'https://api.canva.com/rest/v1/asset-uploads',
   designEndpoint: 'https://api.canva.com/rest/v1/designs',
-  scopes: [
-    'asset:write',
-    'design:content:write',
-    'design:meta:read',
-  ].join(' '),
+  scopes: 'asset:read asset:write design:content:read design:content:write',
 }

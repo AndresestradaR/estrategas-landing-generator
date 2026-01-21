@@ -59,7 +59,7 @@ export async function GET(request: Request) {
   }
 
   // Build authorization URL
-  const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL}/api/canva/callback`
+  const redirectUri = process.env.CANVA_REDIRECT_URI || 'https://estrategas-landing-generator.vercel.app/api/canva/callback'
 
   const authUrl = new URL(CANVA_CONFIG.authorizationEndpoint)
   authUrl.searchParams.set('response_type', 'code')

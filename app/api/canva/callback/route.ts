@@ -204,7 +204,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL}/api/canva/callback`
+    const redirectUri = process.env.CANVA_REDIRECT_URI || 'https://estrategas-landing-generator.vercel.app/api/canva/callback'
 
     // Exchange code for tokens
     const tokens = await exchangeCodeForTokens(code, codeVerifier, redirectUri)
