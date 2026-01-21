@@ -89,6 +89,7 @@ export default function ProductGeneratePage() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [isSharing, setIsSharing] = useState(false)
   const [isEnhancing, setIsEnhancing] = useState(false)
+  const [isOpeningCanva, setIsOpeningCanva] = useState(false)
   
   // Template state
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
@@ -430,23 +431,65 @@ export default function ProductGeneratePage() {
     }
   }
 
-  const handleOpenInCanva = (section: GeneratedSection) => {
-    // 1. Download the image
-    const link = document.createElement('a')
-    link.href = section.generated_image_url
-    link.download = `${product?.name || 'banner'}-canva-${Date.now()}.png`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+  const handleOpenInCanva = async (section: GeneratedSection) => {
+    setIsOpeningCanva(true)
+    toast.loading('Conectando con Canva...', { id: 'canva' })
 
-    // 2. Open Canva homepage (this URL works!)
-    window.open('https://www.canva.com', '_blank')
+    try {
+      // Try to upload directly if we have a token
+      const response = await fetch('/api/canva/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageBase64: section.generated_image_url,
+          sectionId: section.id,
+          productName: product?.name,
+        }),
+      })
 
-    // 3. Show toast with instructions
-    toast.success('Imagen descargada. Crea un diseño en Canva y sube la imagen.', {
-      duration: 5000,
-      icon: '🎨'
-    })
+      const data = await response.json()
+
+      if (data.needsAuth) {
+        // Need to authenticate - redirect to OAuth flow
+        toast.loading('Autenticando con Canva...', { id: 'canva' })
+
+        // Store image data in sessionStorage for after OAuth
+        sessionStorage.setItem('canva_pending_image', section.generated_image_url)
+        sessionStorage.setItem('canva_pending_section', section.id)
+
+        // Redirect to OAuth
+        window.location.href = '/api/canva/auth'
+        return
+      }
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al conectar con Canva')
+      }
+
+      // Success - open Canva editor
+      toast.success('¡Abriendo Canva!', { id: 'canva' })
+      window.open(data.editUrl, '_blank')
+    } catch (error: any) {
+      console.error('Canva error:', error)
+      toast.error('Error con Canva. Descargando imagen...', { id: 'canva' })
+
+      // Fallback: Download image and open Canva manually
+      const link = document.createElement('a')
+      link.href = section.generated_image_url
+      link.download = `${product?.name || 'banner'}-canva-${Date.now()}.png`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+
+      window.open('https://www.canva.com/create/custom-size', '_blank')
+
+      toast.success('Imagen descargada. Sube la imagen en Canva.', {
+        duration: 5000,
+        icon: '🎨'
+      })
+    } finally {
+      setIsOpeningCanva(false)
+    }
   }
 
   const handleEdit = async () => {
@@ -1099,11 +1142,16 @@ export default function ProductGeneratePage() {
                 {/* Edit in Canva */}
                 <button
                   onClick={() => handleOpenInCanva(selectedSection)}
-                  className="w-full flex items-center gap-3 px-4 py-3 bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/30 rounded-xl hover:from-purple-500/20 hover:to-pink-500/20 transition-colors"
+                  disabled={isOpeningCanva}
+                  className="w-full flex items-center gap-3 px-4 py-3 bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/30 rounded-xl hover:from-purple-500/20 hover:to-pink-500/20 transition-colors disabled:opacity-50"
                 >
-                  <ExternalLink className="w-5 h-5 text-purple-500" />
+                  {isOpeningCanva ? (
+                    <Loader2 className="w-5 h-5 text-purple-500 animate-spin" />
+                  ) : (
+                    <ExternalLink className="w-5 h-5 text-purple-500" />
+                  )}
                   <span className="bg-gradient-to-r from-purple-500 to-pink-500 bg-clip-text text-transparent font-medium">
-                    Editar en Canva
+                    {isOpeningCanva ? 'Conectando...' : 'Editar en Canva'}
                   </span>
                 </button>
 
