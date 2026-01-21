@@ -155,6 +155,7 @@ export async function POST(request: Request) {
     // Build generation request with pricing data
     const generateRequest: GenerateImageRequest = {
       provider: selectedProvider,
+      modelId: modelId, // Pass the specific model ID
       prompt: '', // Will be built by provider
       templateBase64,
       templateMimeType,

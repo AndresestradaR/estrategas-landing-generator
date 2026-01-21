@@ -1,4 +1,4 @@
-import { ImageProvider, GenerateImageRequest, GenerateImageResult } from './types'
+import { ImageProvider, GenerateImageRequest, GenerateImageResult, getApiModelId } from './types'
 
 function buildPricingSection(request: GenerateImageRequest): string {
   const { creativeControls } = request
@@ -40,15 +40,15 @@ function buildPrompt(request: GenerateImageRequest): string {
   // Map country codes to names
   const countryNames: Record<string, string> = {
     CO: 'Colombia',
-    MX: 'México',
-    PA: 'Panamá',
+    MX: 'Mexico',
+    PA: 'Panama',
     EC: 'Ecuador',
-    PE: 'Perú',
+    PE: 'Peru',
     CL: 'Chile',
     PY: 'Paraguay',
     AR: 'Argentina',
     GT: 'Guatemala',
-    ES: 'España',
+    ES: 'Espana',
   }
   const countryName = countryNames[targetCountry] || 'Colombia'
 
@@ -86,6 +86,21 @@ ${creativeControls?.additionalInstructions ? `SPECIAL INSTRUCTIONS: ${creativeCo
 Create a stunning, professional e-commerce banner ready for social media advertising.`
 }
 
+// Map aspect ratio to OpenAI sizes
+function getOpenAISize(aspectRatio: string): string {
+  const sizeMap: Record<string, string> = {
+    '1:1': '1024x1024',
+    '16:9': '1536x1024',
+    '9:16': '1024x1536',
+    '4:3': '1536x1024',
+    '3:4': '1024x1536',
+    '4:5': '1024x1536',
+    '3:2': '1536x1024',
+    '2:3': '1024x1536',
+  }
+  return sizeMap[aspectRatio] || '1024x1024'
+}
+
 export const openaiProvider: ImageProvider = {
   id: 'openai',
 
@@ -93,19 +108,26 @@ export const openaiProvider: ImageProvider = {
     try {
       const prompt = buildPrompt(request)
 
-      // Use gpt-image-1 for image generation
-      const response = await fetch('https://api.openai.com/v1/images/generate', {
+      // Get the API model ID from the selected model (default to gpt-image-1.5)
+      const apiModelId = request.modelId ? getApiModelId(request.modelId) : 'gpt-image-1.5'
+
+      // Get size based on aspect ratio
+      const size = getOpenAISize(request.aspectRatio || '1:1')
+
+      // Use OpenAI Images API
+      const response = await fetch('https://api.openai.com/v1/images/generations', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model: 'gpt-image-1',
+          model: apiModelId,
           prompt: prompt,
           n: 1,
-          size: '1024x1024', // OpenAI uses fixed sizes
+          size: size,
           response_format: 'b64_json',
+          quality: request.quality === '4k' || request.quality === 'hd' ? 'hd' : 'standard',
         }),
       })
 
@@ -147,12 +169,13 @@ export async function editImageWithOpenAI(
   apiKey: string,
   imageBase64: string,
   maskBase64: string,
-  prompt: string
+  prompt: string,
+  modelId?: string
 ): Promise<GenerateImageResult> {
   try {
     // Convert base64 to FormData
     const formData = new FormData()
-    formData.append('model', 'gpt-image-1')
+    formData.append('model', modelId || 'gpt-image-1.5')
 
     // Convert base64 to Blob
     const imageBlob = await fetch(`data:image/png;base64,${imageBase64}`).then((r) => r.blob())

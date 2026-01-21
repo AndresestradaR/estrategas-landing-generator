@@ -1,4 +1,4 @@
-import { ImageProvider, GenerateImageRequest, GenerateImageResult } from './types'
+import { ImageProvider, GenerateImageRequest, GenerateImageResult, getApiModelId } from './types'
 
 function buildPricingSection(request: GenerateImageRequest): string {
   const { creativeControls } = request
@@ -28,8 +28,8 @@ function buildPrompt(request: GenerateImageRequest): string {
   const targetCountry = creativeControls?.targetCountry || 'CO'
 
   const countryNames: Record<string, string> = {
-    CO: 'Colombia', MX: 'México', PA: 'Panamá', EC: 'Ecuador', PE: 'Perú',
-    CL: 'Chile', PY: 'Paraguay', AR: 'Argentina', GT: 'Guatemala', ES: 'España',
+    CO: 'Colombia', MX: 'Mexico', PA: 'Panama', EC: 'Ecuador', PE: 'Peru',
+    CL: 'Chile', PY: 'Paraguay', AR: 'Argentina', GT: 'Guatemala', ES: 'Espana',
   }
   const countryName = countryNames[targetCountry] || 'Colombia'
 
@@ -52,13 +52,20 @@ ${creativeControls?.productDetails ? `- Product features: ${creativeControls.pro
 TEXT:
 - All text in SPANISH
 - Bold, impactful headlines
-- Trust badges at bottom (Envío Gratis, Pago Contraentrega, Garantía)
+- Trust badges at bottom (Envio Gratis, Pago Contraentrega, Garantia)
 
 ${creativeControls?.salesAngle ? `Marketing angle: ${creativeControls.salesAngle}` : ''}
 ${creativeControls?.targetAvatar ? `Target audience: ${creativeControls.targetAvatar}` : ''}
 ${creativeControls?.additionalInstructions ? `Special: ${creativeControls.additionalInstructions}` : ''}
 
 Create a stunning, professional banner ready for social media advertising.`
+}
+
+// Map our model IDs to BFL API endpoints
+function getFluxEndpoint(apiModelId: string): string {
+  // The apiModelId maps directly to the endpoint path
+  // e.g., 'flux-2-pro' -> '/v1/flux-2-pro'
+  return `https://api.bfl.ai/v1/${apiModelId}`
 }
 
 export const fluxProvider: ImageProvider = {
@@ -68,18 +75,36 @@ export const fluxProvider: ImageProvider = {
     try {
       const prompt = buildPrompt(request)
 
-      // Use FLUX Pro 1.1 for best quality
-      const createResponse = await fetch('https://api.bfl.ai/v1/flux-pro-1.1', {
+      // Get the API model ID from the selected model (default to flux-2-pro)
+      const apiModelId = request.modelId ? getApiModelId(request.modelId) : 'flux-2-pro'
+      const endpoint = getFluxEndpoint(apiModelId)
+
+      // Build request body based on model capabilities
+      const requestBody: Record<string, any> = {
+        prompt: prompt,
+        aspect_ratio: request.aspectRatio || '9:16',
+      }
+
+      // Add image input for models that support it (Kontext, Fill, etc.)
+      const supportsImageInput = apiModelId.includes('kontext') ||
+                                  apiModelId.includes('fill') ||
+                                  apiModelId.includes('flex') ||
+                                  apiModelId === 'flux-2-pro' ||
+                                  apiModelId === 'flux-2-max'
+
+      if (supportsImageInput && request.templateBase64 && request.templateMimeType) {
+        requestBody.image_prompt = request.templateBase64
+        requestBody.image_prompt_strength = 0.5
+      }
+
+      const createResponse = await fetch(endpoint, {
         method: 'POST',
         headers: {
           accept: 'application/json',
           'x-key': apiKey,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          prompt: prompt,
-          aspect_ratio: request.aspectRatio || '9:16',
-        }),
+        body: JSON.stringify(requestBody),
       })
 
       if (!createResponse.ok) {
@@ -93,8 +118,8 @@ export const fluxProvider: ImageProvider = {
       const requestId = createData.id
       const pollingUrl = createData.polling_url
 
-      if (!requestId) {
-        throw new Error('No request ID returned from FLUX')
+      if (!requestId && !pollingUrl) {
+        throw new Error('No request ID or polling URL returned from FLUX')
       }
 
       // Return pending status with polling URL
@@ -118,7 +143,7 @@ export const fluxProvider: ImageProvider = {
       // If pollingUrl is not a full URL, construct it
       const url = pollingUrl.startsWith('http')
         ? pollingUrl
-        : `https://api.bfl.ai/v1/status/${pollingUrl}`
+        : `https://api.bfl.ai/v1/get_result?id=${pollingUrl}`
 
       const response = await fetch(url, {
         method: 'GET',
@@ -135,7 +160,7 @@ export const fluxProvider: ImageProvider = {
       const data = await response.json()
 
       // Check status
-      if (data.status === 'Pending' || data.status === 'Processing') {
+      if (data.status === 'Pending' || data.status === 'Processing' || data.status === 'Queued') {
         return {
           success: true,
           provider: 'flux',
@@ -187,24 +212,33 @@ export const fluxProvider: ImageProvider = {
   },
 }
 
-// FLUX Kontext Pro - supports image input
+// FLUX Kontext Pro - supports image input for contextual editing
 export async function generateWithFluxKontext(
   apiKey: string,
   prompt: string,
-  aspectRatio: string = '1:1'
+  modelId: string = 'flux-kontext-pro',
+  aspectRatio: string = '1:1',
+  imageBase64?: string
 ): Promise<GenerateImageResult> {
   try {
-    const createResponse = await fetch('https://api.bfl.ai/v1/flux-kontext-pro', {
+    const requestBody: Record<string, any> = {
+      prompt: prompt,
+      aspect_ratio: aspectRatio,
+    }
+
+    if (imageBase64) {
+      requestBody.image_prompt = imageBase64
+      requestBody.image_prompt_strength = 0.5
+    }
+
+    const createResponse = await fetch(`https://api.bfl.ai/v1/${modelId}`, {
       method: 'POST',
       headers: {
         accept: 'application/json',
         'x-key': apiKey,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        prompt: prompt,
-        aspect_ratio: aspectRatio,
-      }),
+      body: JSON.stringify(requestBody),
     })
 
     if (!createResponse.ok) {

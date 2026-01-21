@@ -40,6 +40,7 @@ const TAG_CONFIG: Record<ModelTag, { label: string; color: string; icon: React.R
   BEST_TEXT: { label: 'BEST TEXT', color: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30', icon: <Type className="w-2.5 h-2.5" /> },
   HD: { label: 'HD', color: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30', icon: <Sparkles className="w-2.5 h-2.5" /> },
   '4K': { label: '4K', color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30', icon: <Crown className="w-2.5 h-2.5" /> },
+  RECOMENDADO: { label: 'RECOMENDADO', color: 'bg-yellow-500/20 text-yellow-500 border-yellow-500/30', icon: <Star className="w-2.5 h-2.5 fill-yellow-500" /> },
 }
 
 export default function ModelSelector({

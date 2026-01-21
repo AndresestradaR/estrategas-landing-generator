@@ -1,4 +1,4 @@
-import { ImageProvider, GenerateImageRequest, GenerateImageResult, mapAspectRatioForProvider } from './types'
+import { ImageProvider, GenerateImageRequest, GenerateImageResult, mapAspectRatioForProvider, getApiModelId } from './types'
 
 function buildPricingSection(request: GenerateImageRequest): string {
   const { creativeControls } = request
@@ -28,8 +28,8 @@ function buildPrompt(request: GenerateImageRequest): string {
   const targetCountry = creativeControls?.targetCountry || 'CO'
 
   const countryNames: Record<string, string> = {
-    CO: 'Colombia', MX: 'México', PA: 'Panamá', EC: 'Ecuador', PE: 'Perú',
-    CL: 'Chile', PY: 'Paraguay', AR: 'Argentina', GT: 'Guatemala', ES: 'España',
+    CO: 'Colombia', MX: 'Mexico', PA: 'Panama', EC: 'Ecuador', PE: 'Peru',
+    CL: 'Chile', PY: 'Paraguay', AR: 'Argentina', GT: 'Guatemala', ES: 'Espana',
   }
   const countryName = countryNames[targetCountry] || 'Colombia'
 
@@ -80,6 +80,9 @@ export const seedreamProvider: ImageProvider = {
     try {
       const prompt = buildPrompt(request)
 
+      // Get the API model ID from the selected model
+      const apiModelId = request.modelId ? getApiModelId(request.modelId) : 'bytedance/seedream-4.5'
+
       // Prepare image URLs - Seedream requires URLs, not base64
       const imageUrls: string[] = []
 
@@ -100,7 +103,11 @@ export const seedreamProvider: ImageProvider = {
       // Map aspect ratio to Seedream format
       const imageSize = mapAspectRatioForProvider(request.aspectRatio || '9:16', 'seedream')
 
-      // Create task
+      // Determine quality based on model
+      const is4K = request.modelId === 'seedream-4-4k'
+      const quality = is4K ? '4K' : (request.quality === '4k' ? '4K' : request.quality === 'hd' ? '2K' : '1K')
+
+      // Create task via KIE.ai API
       const createResponse = await fetch('https://api.kie.ai/api/v1/jobs/createTask', {
         method: 'POST',
         headers: {
@@ -108,12 +115,12 @@ export const seedreamProvider: ImageProvider = {
           Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model: 'seedream/4.5-edit',
+          model: apiModelId,
           input: {
             prompt: prompt,
             image_urls: imageUrls,
             aspect_ratio: request.aspectRatio || '1:1',
-            quality: request.quality === '4k' ? 'high' : 'basic',
+            image_resolution: quality,
           },
         }),
       })
@@ -220,6 +227,7 @@ export const seedreamProvider: ImageProvider = {
 export async function generateWithSeedreamText(
   apiKey: string,
   prompt: string,
+  modelId?: string,
   options: {
     imageSize?: string
     resolution?: '1K' | '2K' | '4K'
@@ -227,6 +235,8 @@ export async function generateWithSeedreamText(
   } = {}
 ): Promise<GenerateImageResult> {
   try {
+    const apiModelId = modelId || 'bytedance/seedream-4.5'
+
     const createResponse = await fetch('https://api.kie.ai/api/v1/jobs/createTask', {
       method: 'POST',
       headers: {
@@ -234,7 +244,7 @@ export async function generateWithSeedreamText(
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'bytedance/seedream-v4-text-to-image',
+        model: apiModelId,
         input: {
           prompt: prompt,
           image_size: options.imageSize || 'square_hd',

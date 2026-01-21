@@ -6,34 +6,34 @@ export type ImageProviderCompany = 'google' | 'openai' | 'bytedance' | 'bfl'
 // Specific model IDs
 export type ImageModelId =
   // Google (5 models)
-  | 'gemini-2.5-flash-image'
+  | 'gemini-2.5-flash'
   | 'imagen-3'
-  | 'imagen-4'
   | 'imagen-4-fast'
+  | 'imagen-4'
   | 'imagen-4-ultra'
-  // OpenAI (1 model only)
-  | 'gpt-image-1'
+  // OpenAI (1 model only - GPT Image 1.5)
+  | 'gpt-image-1.5'
   // ByteDance via KIE.ai (4 models)
   | 'seedream-4.5'
   | 'seedream-4'
   | 'seedream-4-4k'
   | 'seedream-3'
   // Black Forest Labs FLUX (10 models)
+  | 'flux-2-max'
+  | 'flux-2-klein'
   | 'flux-2-pro'
-  | 'flux-pro-1.1'
-  | 'flux-pro-1.1-ultra'
-  | 'flux-pro'
-  | 'flux-dev'
-  | 'flux-schnell'
-  | 'flux-kontext-pro'
-  | 'flux-kontext-max'
-  | 'flux-fill-pro'
-  | 'flux-canny-pro'
+  | 'flux-2-flex'
+  | 'flux-1-kontext-max'
+  | 'flux-1-kontext-pro'
+  | 'flux-1'
+  | 'flux-1-fast'
+  | 'flux-1-realism'
+  | 'flux-1.1'
 
 // Legacy type for backward compatibility
 export type ImageProviderType = 'gemini' | 'openai' | 'seedream' | 'flux'
 
-export type ModelTag = 'NEW' | 'TRENDING' | 'FAST' | 'PREMIUM' | 'BEST_TEXT' | 'HD' | '4K'
+export type ModelTag = 'NEW' | 'TRENDING' | 'FAST' | 'PREMIUM' | 'BEST_TEXT' | 'HD' | '4K' | 'RECOMENDADO'
 
 export interface ImageModelConfig {
   id: ImageModelId
@@ -48,6 +48,8 @@ export interface ImageModelConfig {
   pricePerImage: string
   recommended?: boolean
   tags?: ModelTag[]
+  // The actual API model ID to use when calling the provider
+  apiModelId: string
 }
 
 export interface ImageCompanyGroup {
@@ -63,8 +65,8 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
   // ============================================
   // GOOGLE (5 models)
   // ============================================
-  'gemini-2.5-flash-image': {
-    id: 'gemini-2.5-flash-image',
+  'gemini-2.5-flash': {
+    id: 'gemini-2.5-flash',
     name: 'Gemini 2.5 Flash',
     description: 'Mejor para texto legible en banners',
     company: 'google',
@@ -75,68 +77,73 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     requiresPolling: false,
     pricePerImage: '~$0.02',
     recommended: true,
-    tags: ['BEST_TEXT', 'FAST'],
+    tags: ['RECOMENDADO', 'BEST_TEXT', 'FAST'],
+    apiModelId: 'gemini-2.5-flash-preview-image-generation',
   },
   'imagen-3': {
     id: 'imagen-3',
     name: 'Imagen 3',
-    description: 'Generación de imágenes de alta calidad',
+    description: 'High-quality images',
     company: 'google',
     companyName: 'Google',
     supportsImageInput: false,
     supportsAspectRatio: true,
-    maxImages: 1,
+    maxImages: 4,
     requiresPolling: false,
     pricePerImage: '~$0.03',
-    tags: ['TRENDING'],
-  },
-  'imagen-4': {
-    id: 'imagen-4',
-    name: 'Imagen 4',
-    description: 'Nueva generación con mejor calidad',
-    company: 'google',
-    companyName: 'Google',
-    supportsImageInput: false,
-    supportsAspectRatio: true,
-    maxImages: 1,
-    requiresPolling: false,
-    pricePerImage: '~$0.04',
-    tags: ['NEW'],
+    tags: [],
+    apiModelId: 'imagen-3.0-generate-002',
   },
   'imagen-4-fast': {
     id: 'imagen-4-fast',
     name: 'Imagen 4 Fast',
-    description: 'Versión rápida de Imagen 4',
+    description: 'Generacion rapida',
     company: 'google',
     companyName: 'Google',
     supportsImageInput: false,
     supportsAspectRatio: true,
-    maxImages: 1,
+    maxImages: 4,
     requiresPolling: false,
     pricePerImage: '~$0.02',
-    tags: ['NEW', 'FAST'],
+    tags: ['FAST'],
+    apiModelId: 'imagen-4.0-fast-generate-001',
+  },
+  'imagen-4': {
+    id: 'imagen-4',
+    name: 'Imagen 4',
+    description: 'Incredible prompt adherence',
+    company: 'google',
+    companyName: 'Google',
+    supportsImageInput: false,
+    supportsAspectRatio: true,
+    maxImages: 4,
+    requiresPolling: false,
+    pricePerImage: '~$0.04',
+    tags: [],
+    apiModelId: 'imagen-4.0-generate-001',
   },
   'imagen-4-ultra': {
     id: 'imagen-4-ultra',
     name: 'Imagen 4 Ultra',
-    description: 'Máxima calidad de Imagen 4',
+    description: 'Ultra quality',
     company: 'google',
     companyName: 'Google',
     supportsImageInput: false,
     supportsAspectRatio: true,
     maxImages: 1,
     requiresPolling: false,
-    pricePerImage: '~$0.08',
-    tags: ['NEW', 'PREMIUM'],
+    pricePerImage: '~$0.06',
+    tags: ['PREMIUM'],
+    apiModelId: 'imagen-4.0-ultra-generate-001',
   },
 
   // ============================================
-  // OPENAI (1 model only)
+  // OPENAI (1 model only - GPT Image 1.5)
   // ============================================
-  'gpt-image-1': {
-    id: 'gpt-image-1',
-    name: 'GPT Image 1',
-    description: 'Alta calidad fotorealista',
+  'gpt-image-1.5': {
+    id: 'gpt-image-1.5',
+    name: 'GPT Image 1.5',
+    description: 'Ultima version - Mejor calidad general',
     company: 'openai',
     companyName: 'OpenAI',
     supportsImageInput: true,
@@ -145,7 +152,8 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     requiresPolling: false,
     pricePerImage: '~$0.04',
     recommended: true,
-    tags: ['TRENDING'],
+    tags: ['RECOMENDADO', 'NEW', 'TRENDING'],
+    apiModelId: 'gpt-image-1.5',
   },
 
   // ============================================
@@ -154,7 +162,7 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
   'seedream-4.5': {
     id: 'seedream-4.5',
     name: 'Seedream 4.5',
-    description: 'Última versión - Mejor calidad',
+    description: 'Highly aesthetic multi-image',
     company: 'bytedance',
     companyName: 'ByteDance',
     supportsImageInput: true,
@@ -163,37 +171,41 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     requiresPolling: true,
     pricePerImage: '~$0.032',
     recommended: true,
-    tags: ['NEW', 'TRENDING'],
+    tags: ['RECOMENDADO', 'TRENDING'],
+    apiModelId: 'bytedance/seedream-4.5',
   },
   'seedream-4': {
     id: 'seedream-4',
     name: 'Seedream 4',
-    description: 'Excelente para edición de imágenes',
+    description: 'Multi-image generation and editing',
     company: 'bytedance',
     companyName: 'ByteDance',
     supportsImageInput: true,
     supportsAspectRatio: true,
     maxImages: 6,
     requiresPolling: true,
-    pricePerImage: '~$0.028',
+    pricePerImage: '~$0.03',
+    tags: [],
+    apiModelId: 'bytedance/seedream-4',
   },
   'seedream-4-4k': {
     id: 'seedream-4-4k',
     name: 'Seedream 4 4K',
-    description: 'Resolución 4K para impresión',
+    description: '4K with reference images',
     company: 'bytedance',
     companyName: 'ByteDance',
     supportsImageInput: true,
     supportsAspectRatio: true,
     maxImages: 4,
     requiresPolling: true,
-    pricePerImage: '~$0.05',
-    tags: ['4K', 'PREMIUM'],
+    pricePerImage: '~$0.04',
+    tags: ['4K'],
+    apiModelId: 'bytedance/seedream-4-4k',
   },
   'seedream-3': {
     id: 'seedream-3',
     name: 'Seedream 3',
-    description: 'Versión económica y rápida',
+    description: 'Exceptional creativity',
     company: 'bytedance',
     companyName: 'ByteDance',
     supportsImageInput: true,
@@ -201,106 +213,17 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     maxImages: 6,
     requiresPolling: true,
     pricePerImage: '~$0.02',
-    tags: ['FAST'],
+    tags: [],
+    apiModelId: 'bytedance/seedream-3',
   },
 
   // ============================================
   // BLACK FOREST LABS FLUX (10 models)
   // ============================================
-  'flux-2-pro': {
-    id: 'flux-2-pro',
-    name: 'FLUX 2 Pro',
-    description: 'Nueva generación - Mejor calidad',
-    company: 'bfl',
-    companyName: 'Black Forest Labs',
-    supportsImageInput: false,
-    supportsAspectRatio: true,
-    maxImages: 1,
-    requiresPolling: true,
-    pricePerImage: '~$0.05',
-    recommended: true,
-    tags: ['NEW', 'TRENDING'],
-  },
-  'flux-pro-1.1': {
-    id: 'flux-pro-1.1',
-    name: 'FLUX Pro 1.1',
-    description: 'Generación ultra rápida',
-    company: 'bfl',
-    companyName: 'Black Forest Labs',
-    supportsImageInput: false,
-    supportsAspectRatio: true,
-    maxImages: 1,
-    requiresPolling: true,
-    pricePerImage: '~$0.04',
-    tags: ['FAST'],
-  },
-  'flux-pro-1.1-ultra': {
-    id: 'flux-pro-1.1-ultra',
-    name: 'FLUX Pro 1.1 Ultra',
-    description: 'Máxima calidad FLUX 1.1',
-    company: 'bfl',
-    companyName: 'Black Forest Labs',
-    supportsImageInput: false,
-    supportsAspectRatio: true,
-    maxImages: 1,
-    requiresPolling: true,
-    pricePerImage: '~$0.06',
-    tags: ['PREMIUM'],
-  },
-  'flux-pro': {
-    id: 'flux-pro',
-    name: 'FLUX Pro',
-    description: 'Modelo profesional estándar',
-    company: 'bfl',
-    companyName: 'Black Forest Labs',
-    supportsImageInput: false,
-    supportsAspectRatio: true,
-    maxImages: 1,
-    requiresPolling: true,
-    pricePerImage: '~$0.035',
-  },
-  'flux-dev': {
-    id: 'flux-dev',
-    name: 'FLUX Dev',
-    description: 'Modelo para desarrollo y pruebas',
-    company: 'bfl',
-    companyName: 'Black Forest Labs',
-    supportsImageInput: false,
-    supportsAspectRatio: true,
-    maxImages: 1,
-    requiresPolling: true,
-    pricePerImage: '~$0.025',
-  },
-  'flux-schnell': {
-    id: 'flux-schnell',
-    name: 'FLUX Schnell',
-    description: 'El más rápido - Ideal para pruebas',
-    company: 'bfl',
-    companyName: 'Black Forest Labs',
-    supportsImageInput: false,
-    supportsAspectRatio: true,
-    maxImages: 1,
-    requiresPolling: true,
-    pricePerImage: '~$0.003',
-    tags: ['FAST'],
-  },
-  'flux-kontext-pro': {
-    id: 'flux-kontext-pro',
-    name: 'FLUX Kontext Pro',
-    description: 'Edición contextual de imágenes',
-    company: 'bfl',
-    companyName: 'Black Forest Labs',
-    supportsImageInput: true,
-    supportsAspectRatio: true,
-    maxImages: 1,
-    requiresPolling: true,
-    pricePerImage: '~$0.04',
-    tags: ['NEW'],
-  },
-  'flux-kontext-max': {
-    id: 'flux-kontext-max',
-    name: 'FLUX Kontext Max',
-    description: 'Edición contextual premium',
+  'flux-2-max': {
+    id: 'flux-2-max',
+    name: 'Flux.2 Max',
+    description: 'Advanced editing, maximum quality',
     company: 'bfl',
     companyName: 'Black Forest Labs',
     supportsImageInput: true,
@@ -308,12 +231,27 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     maxImages: 1,
     requiresPolling: true,
     pricePerImage: '~$0.08',
-    tags: ['NEW', 'PREMIUM'],
+    tags: ['PREMIUM'],
+    apiModelId: 'flux-2-max',
   },
-  'flux-fill-pro': {
-    id: 'flux-fill-pro',
-    name: 'FLUX Fill Pro',
-    description: 'Inpainting y outpainting profesional',
+  'flux-2-klein': {
+    id: 'flux-2-klein',
+    name: 'Flux 2 Klein',
+    description: 'Fast with high quality',
+    company: 'bfl',
+    companyName: 'Black Forest Labs',
+    supportsImageInput: false,
+    supportsAspectRatio: true,
+    maxImages: 1,
+    requiresPolling: true,
+    pricePerImage: '~$0.02',
+    tags: ['NEW', 'FAST'],
+    apiModelId: 'flux-2-klein',
+  },
+  'flux-2-pro': {
+    id: 'flux-2-pro',
+    name: 'Flux.2 Pro',
+    description: 'Next-gen editing and generation',
     company: 'bfl',
     companyName: 'Black Forest Labs',
     supportsImageInput: true,
@@ -321,11 +259,14 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     maxImages: 1,
     requiresPolling: true,
     pricePerImage: '~$0.05',
+    recommended: true,
+    tags: ['RECOMENDADO', 'NEW'],
+    apiModelId: 'flux-2-pro',
   },
-  'flux-canny-pro': {
-    id: 'flux-canny-pro',
-    name: 'FLUX Canny Pro',
-    description: 'Control de estructura con Canny edges',
+  'flux-2-flex': {
+    id: 'flux-2-flex',
+    name: 'Flux.2 Flex',
+    description: 'Typography support',
     company: 'bfl',
     companyName: 'Black Forest Labs',
     supportsImageInput: true,
@@ -333,6 +274,92 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     maxImages: 1,
     requiresPolling: true,
     pricePerImage: '~$0.05',
+    tags: ['NEW'],
+    apiModelId: 'flux-2-flex',
+  },
+  'flux-1-kontext-max': {
+    id: 'flux-1-kontext-max',
+    name: 'Flux.1 Kontext Max',
+    description: 'Best for pros with reference images',
+    company: 'bfl',
+    companyName: 'Black Forest Labs',
+    supportsImageInput: true,
+    supportsAspectRatio: true,
+    maxImages: 1,
+    requiresPolling: true,
+    pricePerImage: '~$0.05',
+    tags: [],
+    apiModelId: 'flux-kontext-max',
+  },
+  'flux-1-kontext-pro': {
+    id: 'flux-1-kontext-pro',
+    name: 'Flux.1 Kontext Pro',
+    description: 'Daily use, reference images',
+    company: 'bfl',
+    companyName: 'Black Forest Labs',
+    supportsImageInput: true,
+    supportsAspectRatio: true,
+    maxImages: 1,
+    requiresPolling: true,
+    pricePerImage: '~$0.04',
+    tags: [],
+    apiModelId: 'flux-kontext-pro',
+  },
+  'flux-1': {
+    id: 'flux-1',
+    name: 'Flux.1',
+    description: 'Base model',
+    company: 'bfl',
+    companyName: 'Black Forest Labs',
+    supportsImageInput: false,
+    supportsAspectRatio: true,
+    maxImages: 1,
+    requiresPolling: true,
+    pricePerImage: '~$0.01',
+    tags: [],
+    apiModelId: 'flux-dev',
+  },
+  'flux-1-fast': {
+    id: 'flux-1-fast',
+    name: 'Flux.1 Fast',
+    description: '<1s generations',
+    company: 'bfl',
+    companyName: 'Black Forest Labs',
+    supportsImageInput: false,
+    supportsAspectRatio: true,
+    maxImages: 1,
+    requiresPolling: true,
+    pricePerImage: '~$0.01',
+    tags: ['FAST'],
+    apiModelId: 'flux-schnell',
+  },
+  'flux-1-realism': {
+    id: 'flux-1-realism',
+    name: 'Flux.1 Realism',
+    description: 'Photorealism only',
+    company: 'bfl',
+    companyName: 'Black Forest Labs',
+    supportsImageInput: false,
+    supportsAspectRatio: true,
+    maxImages: 1,
+    requiresPolling: true,
+    pricePerImage: '~$0.03',
+    tags: [],
+    apiModelId: 'flux-realism',
+  },
+  'flux-1.1': {
+    id: 'flux-1.1',
+    name: 'Flux.1.1',
+    description: 'Improved base',
+    company: 'bfl',
+    companyName: 'Black Forest Labs',
+    supportsImageInput: false,
+    supportsAspectRatio: true,
+    maxImages: 1,
+    requiresPolling: true,
+    pricePerImage: '~$0.02',
+    tags: [],
+    apiModelId: 'flux-pro-1.1',
   },
 }
 
@@ -344,11 +371,11 @@ export const IMAGE_COMPANY_GROUPS: ImageCompanyGroup[] = [
     icon: 'Sparkles',
     color: 'from-blue-500 to-purple-500',
     models: [
-      IMAGE_MODELS['gemini-2.5-flash-image'],
-      IMAGE_MODELS['imagen-4-ultra'],
-      IMAGE_MODELS['imagen-4'],
-      IMAGE_MODELS['imagen-4-fast'],
+      IMAGE_MODELS['gemini-2.5-flash'],
       IMAGE_MODELS['imagen-3'],
+      IMAGE_MODELS['imagen-4-fast'],
+      IMAGE_MODELS['imagen-4'],
+      IMAGE_MODELS['imagen-4-ultra'],
     ],
   },
   {
@@ -357,7 +384,7 @@ export const IMAGE_COMPANY_GROUPS: ImageCompanyGroup[] = [
     icon: 'Zap',
     color: 'from-green-500 to-emerald-500',
     models: [
-      IMAGE_MODELS['gpt-image-1'],
+      IMAGE_MODELS['gpt-image-1.5'],
     ],
   },
   {
@@ -378,16 +405,16 @@ export const IMAGE_COMPANY_GROUPS: ImageCompanyGroup[] = [
     icon: 'Cpu',
     color: 'from-pink-500 to-rose-500',
     models: [
+      IMAGE_MODELS['flux-2-max'],
+      IMAGE_MODELS['flux-2-klein'],
       IMAGE_MODELS['flux-2-pro'],
-      IMAGE_MODELS['flux-pro-1.1'],
-      IMAGE_MODELS['flux-pro-1.1-ultra'],
-      IMAGE_MODELS['flux-pro'],
-      IMAGE_MODELS['flux-dev'],
-      IMAGE_MODELS['flux-schnell'],
-      IMAGE_MODELS['flux-kontext-pro'],
-      IMAGE_MODELS['flux-kontext-max'],
-      IMAGE_MODELS['flux-fill-pro'],
-      IMAGE_MODELS['flux-canny-pro'],
+      IMAGE_MODELS['flux-2-flex'],
+      IMAGE_MODELS['flux-1-kontext-max'],
+      IMAGE_MODELS['flux-1-kontext-pro'],
+      IMAGE_MODELS['flux-1'],
+      IMAGE_MODELS['flux-1-fast'],
+      IMAGE_MODELS['flux-1-realism'],
+      IMAGE_MODELS['flux-1.1'],
     ],
   },
 ]
@@ -407,7 +434,7 @@ export const IMAGE_PROVIDERS: Record<ImageProviderType, ImageProviderConfig> = {
   gemini: {
     id: 'gemini',
     name: 'Gemini 2.5 Flash',
-    description: 'Google Gemini - Mejor para texto en imágenes',
+    description: 'Google Gemini - Mejor para texto en imagenes',
     supportsImageInput: true,
     supportsAspectRatio: true,
     maxImages: 1,
@@ -415,8 +442,8 @@ export const IMAGE_PROVIDERS: Record<ImageProviderType, ImageProviderConfig> = {
   },
   openai: {
     id: 'openai',
-    name: 'GPT Image 1',
-    description: 'OpenAI GPT Image - Alta calidad fotorealista',
+    name: 'GPT Image 1.5',
+    description: 'OpenAI GPT Image - Alta calidad general',
     supportsImageInput: true,
     supportsAspectRatio: true,
     maxImages: 1,
@@ -425,7 +452,7 @@ export const IMAGE_PROVIDERS: Record<ImageProviderType, ImageProviderConfig> = {
   seedream: {
     id: 'seedream',
     name: 'Seedream 4.5',
-    description: 'ByteDance Seedream - Excelente para edición',
+    description: 'ByteDance Seedream - Excelente para edicion',
     supportsImageInput: true,
     supportsAspectRatio: true,
     maxImages: 6,
@@ -433,9 +460,9 @@ export const IMAGE_PROVIDERS: Record<ImageProviderType, ImageProviderConfig> = {
   },
   flux: {
     id: 'flux',
-    name: 'FLUX Pro 1.1',
-    description: 'Black Forest Labs - Generación ultra rápida',
-    supportsImageInput: false,
+    name: 'FLUX 2 Pro',
+    description: 'Black Forest Labs - Next-gen generation',
+    supportsImageInput: true,
     supportsAspectRatio: true,
     maxImages: 1,
     requiresPolling: true,
@@ -472,8 +499,15 @@ export function getApiKeyField(modelId: ImageModelId): string {
   }
 }
 
+// Get the API model ID for a given model
+export function getApiModelId(modelId: ImageModelId): string {
+  return IMAGE_MODELS[modelId].apiModelId
+}
+
 export interface GenerateImageRequest {
   provider: ImageProviderType
+  // The specific model ID selected by user
+  modelId: ImageModelId
   prompt: string
   // Template and product images as base64
   templateBase64?: string

@@ -104,7 +104,7 @@ export default function ProductGeneratePage() {
   const [selectedSize, setSelectedSize] = useState(OUTPUT_SIZES[0])
 
   // AI Model selection
-  const [selectedModel, setSelectedModel] = useState<ImageModelId>('gemini-2.5-flash-image')
+  const [selectedModel, setSelectedModel] = useState<ImageModelId>('gemini-2.5-flash')
   const [apiKeyStatus, setApiKeyStatus] = useState({
     google: false,
     openai: false,
