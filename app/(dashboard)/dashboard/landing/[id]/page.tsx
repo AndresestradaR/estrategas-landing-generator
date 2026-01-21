@@ -439,11 +439,11 @@ export default function ProductGeneratePage() {
     link.click()
     document.body.removeChild(link)
 
-    // 2. Open Canva (simple URL that works)
-    window.open('https://www.canva.com/create/custom-size', '_blank')
+    // 2. Open Canva homepage (this URL works!)
+    window.open('https://www.canva.com', '_blank')
 
     // 3. Show toast with instructions
-    toast.success('Imagen descargada. Arrastra o sube la imagen en Canva.', {
+    toast.success('Imagen descargada. Crea un diseño en Canva y sube la imagen.', {
       duration: 5000,
       icon: '🎨'
     })
