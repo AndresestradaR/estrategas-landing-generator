@@ -89,7 +89,6 @@ export default function ProductGeneratePage() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [isSharing, setIsSharing] = useState(false)
   const [isEnhancing, setIsEnhancing] = useState(false)
-  const [isOpeningCanva, setIsOpeningCanva] = useState(false)
   
   // Template state
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
@@ -431,54 +430,23 @@ export default function ProductGeneratePage() {
     }
   }
 
-  const handleOpenInCanva = async (section: GeneratedSection) => {
-    setIsOpeningCanva(true)
-    toast.loading('Preparando imagen para Canva...', { id: 'canva' })
+  const handleOpenInCanva = (section: GeneratedSection) => {
+    // 1. Download the image
+    const link = document.createElement('a')
+    link.href = section.generated_image_url
+    link.download = `${product?.name || 'banner'}-canva-${Date.now()}.png`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
 
-    try {
-      // Upload image to get a public URL (reusing WhatsApp logic)
-      const response = await fetch('/api/share', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sectionId: section.id,
-          imageBase64: section.generated_image_url,
-        }),
-      })
+    // 2. Open Canva (simple URL that works)
+    window.open('https://www.canva.com/create/custom-size', '_blank')
 
-      const data = await response.json()
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Error al subir imagen')
-      }
-
-      // Open Canva with the public image URL
-      const canvaUrl = `https://www.canva.com/design/new?imageUrl=${encodeURIComponent(data.publicUrl)}`
-      window.open(canvaUrl, '_blank')
-      toast.success('¡Abriendo Canva!', { id: 'canva' })
-    } catch (error: any) {
-      console.error('Canva error:', error)
-      toast.error('No se pudo abrir con imagen. Abriendo Canva vacío...', { id: 'canva' })
-
-      // Fallback: Download image and open Canva empty
-      try {
-        // Download the image
-        const link = document.createElement('a')
-        link.href = section.generated_image_url
-        link.download = `banner-${section.id}.png`
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-
-        // Open Canva empty
-        window.open('https://www.canva.com/design/new', '_blank')
-      } catch (downloadError) {
-        console.error('Download fallback error:', downloadError)
-        toast.error('Error al preparar imagen', { id: 'canva' })
-      }
-    } finally {
-      setIsOpeningCanva(false)
-    }
+    // 3. Show toast with instructions
+    toast.success('Imagen descargada. Arrastra o sube la imagen en Canva.', {
+      duration: 5000,
+      icon: '🎨'
+    })
   }
 
   const handleEdit = async () => {
@@ -1131,14 +1099,9 @@ export default function ProductGeneratePage() {
                 {/* Edit in Canva */}
                 <button
                   onClick={() => handleOpenInCanva(selectedSection)}
-                  disabled={isOpeningCanva}
-                  className="w-full flex items-center gap-3 px-4 py-3 bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/30 rounded-xl hover:from-purple-500/20 hover:to-pink-500/20 transition-colors disabled:opacity-50"
+                  className="w-full flex items-center gap-3 px-4 py-3 bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/30 rounded-xl hover:from-purple-500/20 hover:to-pink-500/20 transition-colors"
                 >
-                  {isOpeningCanva ? (
-                    <Loader2 className="w-5 h-5 text-purple-500 animate-spin" />
-                  ) : (
-                    <ExternalLink className="w-5 h-5 text-purple-500" />
-                  )}
+                  <ExternalLink className="w-5 h-5 text-purple-500" />
                   <span className="bg-gradient-to-r from-purple-500 to-pink-500 bg-clip-text text-transparent font-medium">
                     Editar en Canva
                   </span>
