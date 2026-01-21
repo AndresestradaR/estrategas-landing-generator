@@ -25,6 +25,8 @@ import {
   ImagePlus
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import ModelSelector from '@/components/generator/ModelSelector'
+import { ImageProviderType } from '@/lib/image-providers/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -97,6 +99,9 @@ export default function ProductGeneratePage() {
   
   // Output settings
   const [selectedSize, setSelectedSize] = useState(OUTPUT_SIZES[0])
+
+  // AI Model selection
+  const [selectedProvider, setSelectedProvider] = useState<ImageProviderType>('gemini')
   
   // Creative controls
   const [showCreativeControls, setShowCreativeControls] = useState(false)
@@ -247,6 +252,7 @@ export default function ProductGeneratePage() {
           templateUrl: selectedTemplate?.image_url || uploadedTemplate,
           productPhotos: productPhotos.filter(p => p !== null),
           outputSize: selectedSize.id,
+          provider: selectedProvider, // Selected AI model
           creativeControls: {
             // Always send price fields
             priceAfter: creativeControls.priceAfter,
@@ -594,6 +600,15 @@ export default function ProductGeneratePage() {
               ))}
             </div>
           </div>
+        </div>
+
+        {/* AI Model Selection */}
+        <div className="mb-6">
+          <ModelSelector
+            value={selectedProvider}
+            onChange={setSelectedProvider}
+            disabled={isGenerating}
+          />
         </div>
 
         {/* Settings Row */}
