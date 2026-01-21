@@ -60,7 +60,7 @@ lib/
 components/
 └── generator/
     ├── ModelSelector.tsx      # CREAR - Selector de modelo IA
-    ├── CountrySelector.tsx    # CREAR - Selector de país
+    ├── CountrySelector.tsx    # CREAR - Selector de país (con banderas)
     ├── PricingControls.tsx    # CREAR - Controles de precios
     └── CanvaButton.tsx        # CREAR - Botón editar en Canva
 app/
@@ -75,34 +75,29 @@ app/
 
 ### Constantes de Países (lib/constants/countries.ts)
 
+**IMPORTANTE: Solo estos 10 países, con banderas emoji**
+
 ```typescript
 export interface Country {
   code: string;
   name: string;
   currency: string;
   currencySymbol: string;
+  flag: string;  // Emoji de bandera
 }
 
+// SOLO ESTOS 10 PAÍSES - NO AGREGAR MÁS
 export const COUNTRIES: Country[] = [
-  { code: 'CO', name: 'Colombia', currency: 'COP', currencySymbol: '$' },
-  { code: 'PE', name: 'Perú', currency: 'PEN', currencySymbol: 'S/' },
-  { code: 'CL', name: 'Chile', currency: 'CLP', currencySymbol: '$' },
-  { code: 'EC', name: 'Ecuador', currency: 'USD', currencySymbol: '$' },
-  { code: 'MX', name: 'México', currency: 'MXN', currencySymbol: '$' },
-  { code: 'AR', name: 'Argentina', currency: 'ARS', currencySymbol: '$' },
-  { code: 'US', name: 'Estados Unidos', currency: 'USD', currencySymbol: '$' },
-  { code: 'ES', name: 'España', currency: 'EUR', currencySymbol: '€' },
-  { code: 'BR', name: 'Brasil', currency: 'BRL', currencySymbol: 'R$' },
-  { code: 'BO', name: 'Bolivia', currency: 'BOB', currencySymbol: 'Bs' },
-  { code: 'PY', name: 'Paraguay', currency: 'PYG', currencySymbol: '₲' },
-  { code: 'UY', name: 'Uruguay', currency: 'UYU', currencySymbol: '$U' },
-  { code: 'VE', name: 'Venezuela', currency: 'USD', currencySymbol: '$' },
-  { code: 'PA', name: 'Panamá', currency: 'USD', currencySymbol: '$' },
-  { code: 'CR', name: 'Costa Rica', currency: 'CRC', currencySymbol: '₡' },
-  { code: 'GT', name: 'Guatemala', currency: 'GTQ', currencySymbol: 'Q' },
-  { code: 'HN', name: 'Honduras', currency: 'HNL', currencySymbol: 'L' },
-  { code: 'SV', name: 'El Salvador', currency: 'USD', currencySymbol: '$' },
-  { code: 'NI', name: 'Nicaragua', currency: 'NIO', currencySymbol: 'C$' },
+  { code: 'CO', name: 'Colombia', currency: 'COP', currencySymbol: '$', flag: '🇨🇴' },
+  { code: 'MX', name: 'México', currency: 'MXN', currencySymbol: '$', flag: '🇲🇽' },
+  { code: 'PA', name: 'Panamá', currency: 'USD', currencySymbol: '$', flag: '🇵🇦' },
+  { code: 'EC', name: 'Ecuador', currency: 'USD', currencySymbol: '$', flag: '🇪🇨' },
+  { code: 'PE', name: 'Perú', currency: 'PEN', currencySymbol: 'S/', flag: '🇵🇪' },
+  { code: 'CL', name: 'Chile', currency: 'CLP', currencySymbol: '$', flag: '🇨🇱' },
+  { code: 'PY', name: 'Paraguay', currency: 'PYG', currencySymbol: '₲', flag: '🇵🇾' },
+  { code: 'AR', name: 'Argentina', currency: 'ARS', currencySymbol: '$', flag: '🇦🇷' },
+  { code: 'GT', name: 'Guatemala', currency: 'GTQ', currencySymbol: 'Q', flag: '🇬🇹' },
+  { code: 'ES', name: 'España', currency: 'EUR', currencySymbol: '€', flag: '🇪🇸' },
 ];
 
 export function getCountryByCode(code: string): Country | undefined {
@@ -110,7 +105,7 @@ export function getCountryByCode(code: string): Country | undefined {
 }
 ```
 
-### Componente CountrySelector
+### Componente CountrySelector (estilo grid con banderas)
 
 ```tsx
 // components/generator/CountrySelector.tsx
@@ -126,26 +121,28 @@ interface Props {
 
 export function CountrySelector({ value, onChange, disabled }: Props) {
   return (
-    <div className="space-y-2">
-      <label className="text-sm font-medium flex items-center gap-2">
-        <span>🌍</span> País de venta
+    <div className="space-y-3">
+      <label className="text-sm font-medium">
+        Selecciona el país destino para tu anuncio
       </label>
-      <select
-        value={value}
-        onChange={(e) => {
-          const country = COUNTRIES.find(c => c.code === e.target.value);
-          if (country) onChange(country);
-        }}
-        disabled={disabled}
-        className="w-full p-3 rounded-lg border bg-background"
-      >
-        <option value="">Seleccionar país...</option>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {COUNTRIES.map((country) => (
-          <option key={country.code} value={country.code}>
-            {country.name} ({country.currencySymbol})
-          </option>
+          <button
+            key={country.code}
+            type="button"
+            disabled={disabled}
+            onClick={() => onChange(country)}
+            className={`flex items-center gap-2 p-3 rounded-lg border transition-all ${
+              value === country.code
+                ? 'border-primary bg-primary/10 ring-2 ring-primary'
+                : 'border-border hover:border-primary/50 bg-card'
+            } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            <span className="text-2xl">{country.flag}</span>
+            <span className="font-medium">{country.name}</span>
+          </button>
         ))}
-      </select>
+      </div>
     </div>
   );
 }
@@ -509,7 +506,7 @@ NEXT_PUBLIC_CANVA_API_KEY=...
 - [ ] Crear carpeta `lib/image-providers/`
 - [ ] Crear `types.ts` con interfaces actualizadas
 - [ ] Crear `index.ts` con router
-- [ ] Crear `lib/constants/countries.ts`
+- [ ] Crear `lib/constants/countries.ts` (SOLO 10 países)
 
 ### Fase 2: Providers
 - [ ] Mover código Gemini actual a `gemini.ts`
@@ -519,7 +516,7 @@ NEXT_PUBLIC_CANVA_API_KEY=...
 
 ### Fase 3: UI Components
 - [ ] Crear `ModelSelector.tsx` (selector tipo Freepik)
-- [ ] Crear `CountrySelector.tsx` (países LATAM)
+- [ ] Crear `CountrySelector.tsx` (grid con banderas, 10 países)
 - [ ] Crear `PricingControls.tsx` (precios opcionales)
 - [ ] Crear `CanvaButton.tsx` (editar en Canva)
 - [ ] Integrar componentes en página de generación
@@ -544,9 +541,11 @@ NEXT_PUBLIC_CANVA_API_KEY=...
 
 3. **Moneda Editable**: Aunque se autocomplete al seleccionar país, el usuario puede editarla manualmente.
 
-4. **Canva SDK**: Verificar con Context7 la versión más reciente del SDK de Canva Design Button.
+4. **Solo 10 Países**: NO agregar más países. Lista cerrada: Colombia, México, Panamá, Ecuador, Perú, Chile, Paraguay, Argentina, Guatemala, España.
 
-5. **Error Handling**: Cada provider debe manejar sus propios errores consistentemente.
+5. **Canva SDK**: Verificar con Context7 la versión más reciente del SDK de Canva Design Button.
+
+6. **Error Handling**: Cada provider debe manejar sus propios errores consistentemente.
 
 ---
 
