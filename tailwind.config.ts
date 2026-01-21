@@ -9,18 +9,39 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: '#0A0A0F',
-        surface: '#141419',
-        border: '#2A2A35',
+        // Dark theme colors (Komposo style)
+        background: '#0a0a0a',
+        surface: '#121212',
+        'surface-elevated': '#1a1a1a',
+        border: '#262626',
+        'border-subtle': '#1f1f1f',
         'text-primary': '#FFFFFF',
-        'text-secondary': '#8B8B9E',
-        accent: '#BFFF00',
-        'accent-hover': '#D4FF4D',
-        error: '#FF4D4D',
-        success: '#4DFF88',
+        'text-secondary': '#a1a1aa',
+        'text-muted': '#71717a',
+        // Brand colors (turquoise)
+        brand: {
+          50: '#f0fdfa',
+          100: '#ccfbf1',
+          200: '#99f6e4',
+          300: '#5eead4',
+          400: '#2dd4bf',
+          500: '#14b8a6',
+          600: '#0d9488',
+          700: '#0f766e',
+          800: '#115e59',
+          900: '#134e4a',
+        },
+        accent: '#14b8a6',
+        'accent-hover': '#0d9488',
+        'accent-light': '#2dd4bf',
+        error: '#ef4444',
+        success: '#22c55e',
+        warning: '#f59e0b',
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        sans: ['Outfit', 'Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+        display: ['Outfit', 'system-ui', 'sans-serif'],
+        body: ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
         mono: ['JetBrains Mono', 'monospace'],
       },
       animation: {
@@ -31,8 +52,8 @@ const config: Config = {
       },
       keyframes: {
         glow: {
-          '0%': { boxShadow: '0 0 5px #BFFF00, 0 0 10px #BFFF00' },
-          '100%': { boxShadow: '0 0 10px #BFFF00, 0 0 20px #BFFF00, 0 0 30px #BFFF00' },
+          '0%': { boxShadow: '0 0 5px #14b8a6, 0 0 10px #14b8a6' },
+          '100%': { boxShadow: '0 0 10px #14b8a6, 0 0 20px #14b8a6, 0 0 30px #14b8a6' },
         },
         fadeIn: {
           '0%': { opacity: '0' },

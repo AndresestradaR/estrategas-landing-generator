@@ -2,7 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+/* Fonts: Outfit for headings, Plus Jakarta Sans for body */
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 * {
   box-sizing: border-box;
@@ -14,42 +15,47 @@ html,
 body {
   max-width: 100vw;
   overflow-x: hidden;
-  background-color: #0A0A0F;
+  background-color: #0a0a0a;
   color: #FFFFFF;
 }
 
 body {
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
 }
 
-/* Custom scrollbar */
+/* Headings use Outfit */
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Outfit', system-ui, sans-serif;
+}
+
+/* Custom scrollbar - dark theme */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #141419;
+  background: #0a0a0a;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2A2A35;
+  background: #262626;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3A3A45;
+  background: #363636;
 }
 
-/* Selection */
+/* Selection - turquoise accent */
 ::selection {
-  background-color: rgba(191, 255, 0, 0.3);
+  background-color: rgba(20, 184, 166, 0.3);
   color: #FFFFFF;
 }
 
-/* Focus visible */
+/* Focus visible - turquoise accent */
 :focus-visible {
-  outline: 2px solid #BFFF00;
+  outline: 2px solid #14b8a6;
   outline-offset: 2px;
 }
 
@@ -67,18 +73,64 @@ body {
   animation: shimmer 2s infinite;
   background: linear-gradient(
     90deg,
-    #141419 0%,
-    #2A2A35 50%,
-    #141419 100%
+    #121212 0%,
+    #1a1a1a 50%,
+    #121212 100%
   );
   background-size: 200% 100%;
 }
 
-/* Glow effect */
+/* Glow effect - turquoise */
 .glow-accent {
-  box-shadow: 0 0 20px rgba(191, 255, 0, 0.3);
+  box-shadow: 0 0 20px rgba(20, 184, 166, 0.3);
 }
 
 .glow-accent-strong {
-  box-shadow: 0 0 30px rgba(191, 255, 0, 0.5);
+  box-shadow: 0 0 30px rgba(20, 184, 166, 0.5);
+}
+
+/* Card hover effect */
+.card-hover {
+  transition: all 0.2s ease;
+}
+
+.card-hover:hover {
+  background-color: #1a1a1a;
+  border-color: #363636;
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, #14b8a6 0%, #2dd4bf 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Button styles */
+.btn-primary {
+  background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%);
+  color: white;
+  transition: all 0.2s ease;
+}
+
+.btn-primary:hover {
+  background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%);
+  box-shadow: 0 0 20px rgba(20, 184, 166, 0.4);
+}
+
+/* Input styles */
+.input-dark {
+  background-color: #121212;
+  border-color: #262626;
+  color: #FFFFFF;
+}
+
+.input-dark:focus {
+  border-color: #14b8a6;
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.1);
+}
+
+.input-dark::placeholder {
+  color: #71717a;
 }
