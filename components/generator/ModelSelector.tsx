@@ -38,6 +38,8 @@ const TAG_CONFIG: Record<ModelTag, { label: string; color: string; icon: React.R
   FAST: { label: 'FAST', color: 'bg-blue-500/20 text-blue-400 border-blue-500/30', icon: <Clock className="w-2.5 h-2.5" /> },
   PREMIUM: { label: 'PREMIUM', color: 'bg-purple-500/20 text-purple-400 border-purple-500/30', icon: <Crown className="w-2.5 h-2.5" /> },
   BEST_TEXT: { label: 'BEST TEXT', color: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30', icon: <Type className="w-2.5 h-2.5" /> },
+  HD: { label: 'HD', color: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30', icon: <Sparkles className="w-2.5 h-2.5" /> },
+  '4K': { label: '4K', color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30', icon: <Crown className="w-2.5 h-2.5" /> },
 }
 
 export default function ModelSelector({
