@@ -5,12 +5,9 @@ export type ImageProviderCompany = 'google' | 'openai' | 'bytedance' | 'bfl'
 
 // Specific model IDs
 export type ImageModelId =
-  // Google (5 models)
+  // Google (2 models only)
+  | 'gemini-3-pro-image'
   | 'gemini-2.5-flash'
-  | 'imagen-3'
-  | 'imagen-4-fast'
-  | 'imagen-4'
-  | 'imagen-4-ultra'
   // OpenAI (1 model only - GPT Image 1.5)
   | 'gpt-image-1.5'
   // ByteDance via KIE.ai (4 models)
@@ -63,78 +60,37 @@ export interface ImageCompanyGroup {
 // All available models with full configuration
 export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
   // ============================================
-  // GOOGLE (5 models)
+  // GOOGLE (2 models only)
   // ============================================
-  'gemini-2.5-flash': {
-    id: 'gemini-2.5-flash',
-    name: 'Gemini 2.5 Flash',
-    description: 'Mejor para texto legible en banners',
+  'gemini-3-pro-image': {
+    id: 'gemini-3-pro-image',
+    name: 'Gemini 3 Pro Image',
+    description: 'Mejor calidad, texto perfecto, resolucion 4K',
     company: 'google',
     companyName: 'Google',
     supportsImageInput: true,
     supportsAspectRatio: true,
     maxImages: 1,
     requiresPolling: false,
-    pricePerImage: '~$0.02',
-    recommended: true,
-    tags: ['RECOMENDADO', 'BEST_TEXT', 'FAST'],
-    apiModelId: 'gemini-2.5-flash-preview-image-generation',
-  },
-  'imagen-3': {
-    id: 'imagen-3',
-    name: 'Imagen 3',
-    description: 'High-quality images',
-    company: 'google',
-    companyName: 'Google',
-    supportsImageInput: false,
-    supportsAspectRatio: true,
-    maxImages: 4,
-    requiresPolling: false,
-    pricePerImage: '~$0.03',
-    tags: [],
-    apiModelId: 'imagen-3.0-generate-002',
-  },
-  'imagen-4-fast': {
-    id: 'imagen-4-fast',
-    name: 'Imagen 4 Fast',
-    description: 'Generacion rapida',
-    company: 'google',
-    companyName: 'Google',
-    supportsImageInput: false,
-    supportsAspectRatio: true,
-    maxImages: 4,
-    requiresPolling: false,
-    pricePerImage: '~$0.02',
-    tags: ['FAST'],
-    apiModelId: 'imagen-4.0-fast-generate-001',
-  },
-  'imagen-4': {
-    id: 'imagen-4',
-    name: 'Imagen 4',
-    description: 'Incredible prompt adherence',
-    company: 'google',
-    companyName: 'Google',
-    supportsImageInput: false,
-    supportsAspectRatio: true,
-    maxImages: 4,
-    requiresPolling: false,
     pricePerImage: '~$0.04',
-    tags: [],
-    apiModelId: 'imagen-4.0-generate-001',
+    recommended: true,
+    tags: ['RECOMENDADO', 'BEST_TEXT', 'PREMIUM', 'NEW'],
+    apiModelId: 'gemini-3-pro-image-preview',
   },
-  'imagen-4-ultra': {
-    id: 'imagen-4-ultra',
-    name: 'Imagen 4 Ultra',
-    description: 'Ultra quality',
+  'gemini-2.5-flash': {
+    id: 'gemini-2.5-flash',
+    name: 'Gemini 2.5 Flash',
+    description: 'Rapido y gratuito - ideal para pruebas',
     company: 'google',
     companyName: 'Google',
-    supportsImageInput: false,
+    supportsImageInput: true,
     supportsAspectRatio: true,
     maxImages: 1,
     requiresPolling: false,
-    pricePerImage: '~$0.06',
-    tags: ['PREMIUM'],
-    apiModelId: 'imagen-4.0-ultra-generate-001',
+    pricePerImage: 'Gratis',
+    recommended: false,
+    tags: ['FAST'],
+    apiModelId: 'gemini-2.5-flash-preview-image-generation',
   },
 
   // ============================================
@@ -371,11 +327,8 @@ export const IMAGE_COMPANY_GROUPS: ImageCompanyGroup[] = [
     icon: 'Sparkles',
     color: 'from-blue-500 to-purple-500',
     models: [
+      IMAGE_MODELS['gemini-3-pro-image'],
       IMAGE_MODELS['gemini-2.5-flash'],
-      IMAGE_MODELS['imagen-3'],
-      IMAGE_MODELS['imagen-4-fast'],
-      IMAGE_MODELS['imagen-4'],
-      IMAGE_MODELS['imagen-4-ultra'],
     ],
   },
   {
@@ -433,8 +386,8 @@ export interface ImageProviderConfig {
 export const IMAGE_PROVIDERS: Record<ImageProviderType, ImageProviderConfig> = {
   gemini: {
     id: 'gemini',
-    name: 'Gemini 2.5 Flash',
-    description: 'Google Gemini - Mejor para texto en imagenes',
+    name: 'Gemini 3 Pro Image',
+    description: 'Google Gemini - Mejor calidad y texto perfecto',
     supportsImageInput: true,
     supportsAspectRatio: true,
     maxImages: 1,
