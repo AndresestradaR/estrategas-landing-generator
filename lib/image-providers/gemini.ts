@@ -1,10 +1,58 @@
 import { ImageProvider, GenerateImageRequest, GenerateImageResult } from './types'
 
+function buildPricingSection(request: GenerateImageRequest): string {
+  const { creativeControls } = request
+  const currencySymbol = creativeControls?.currencySymbol || '$'
+  const priceAfter = creativeControls?.priceAfter
+  const priceBefore = creativeControls?.priceBefore
+  const priceCombo2 = creativeControls?.priceCombo2
+  const priceCombo3 = creativeControls?.priceCombo3
+
+  // Check if any price is provided
+  const hasPricing = priceAfter || priceBefore || priceCombo2 || priceCombo3
+
+  if (!hasPricing) {
+    return 'NO incluir precios en este banner - es solo para branding/awareness.'
+  }
+
+  const lines: string[] = ['PRECIOS EXACTOS (usa estos valores, NO inventes):']
+
+  if (priceAfter) {
+    lines.push(`- Precio OFERTA: ${currencySymbol}${priceAfter} (precio principal, grande y destacado)`)
+  }
+  if (priceBefore) {
+    lines.push(`- Precio ANTES: ${currencySymbol}${priceBefore} (precio tachado, más pequeño)`)
+  }
+  if (priceCombo2) {
+    lines.push(`- Precio 2 UNIDADES: ${currencySymbol}${priceCombo2}`)
+  }
+  if (priceCombo3) {
+    lines.push(`- Precio 3 UNIDADES: ${currencySymbol}${priceCombo3}`)
+  }
+
+  return lines.join('\n')
+}
+
 function buildPrompt(request: GenerateImageRequest): string {
   const { productName, creativeControls } = request
-  const currencySymbol = creativeControls?.currencySymbol || '$'
-  const priceAfter = creativeControls?.priceAfter || ''
-  const priceBefore = creativeControls?.priceBefore || ''
+  const targetCountry = creativeControls?.targetCountry || 'CO'
+
+  // Map country codes to names
+  const countryNames: Record<string, string> = {
+    CO: 'Colombia',
+    MX: 'México',
+    PA: 'Panamá',
+    EC: 'Ecuador',
+    PE: 'Perú',
+    CL: 'Chile',
+    PY: 'Paraguay',
+    AR: 'Argentina',
+    GT: 'Guatemala',
+    ES: 'España',
+  }
+  const countryName = countryNames[targetCountry] || 'Colombia'
+
+  const pricingSection = buildPricingSection(request)
 
   return `Eres un diseñador experto de banners e-commerce. Crea un banner profesional en ESPAÑOL.
 
@@ -23,9 +71,8 @@ REEMPLAZO DE PRODUCTO (CRÍTICO):
 
 DATOS EXACTOS PARA EL BANNER (USA ESTOS VALORES, NO INVENTES):
 - Producto: ${productName}
-${priceAfter ? `- Precio OFERTA: ${currencySymbol}${priceAfter} (este es el precio principal, grande y destacado)` : ''}
-${priceBefore ? `- Precio ANTES: ${currencySymbol}${priceBefore} (precio tachado, más pequeño)` : ''}
-- País: Colombia
+- País destino: ${countryName}
+${pricingSection}
 ${creativeControls?.productDetails ? `- Detalles: ${creativeControls.productDetails}` : ''}
 
 TEXTO (MUY IMPORTANTE):

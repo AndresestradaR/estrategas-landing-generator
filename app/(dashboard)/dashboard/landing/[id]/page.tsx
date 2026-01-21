@@ -26,7 +26,10 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import ModelSelector from '@/components/generator/ModelSelector'
-import { ImageProviderType } from '@/lib/image-providers/types'
+import CountrySelector from '@/components/generator/CountrySelector'
+import PricingControls, { PricingData, getDefaultPricingData } from '@/components/generator/PricingControls'
+import { ImageModelId, modelIdToProviderType } from '@/lib/image-providers/types'
+import { Country, getDefaultCountry } from '@/lib/constants/countries'
 
 export const dynamic = 'force-dynamic'
 
@@ -101,8 +104,20 @@ export default function ProductGeneratePage() {
   const [selectedSize, setSelectedSize] = useState(OUTPUT_SIZES[0])
 
   // AI Model selection
-  const [selectedProvider, setSelectedProvider] = useState<ImageProviderType>('gemini')
-  
+  const [selectedModel, setSelectedModel] = useState<ImageModelId>('gemini-2.5-flash-image')
+  const [apiKeyStatus, setApiKeyStatus] = useState({
+    google: false,
+    openai: false,
+    bytedance: false,
+    bfl: false,
+  })
+
+  // Country selection
+  const [selectedCountry, setSelectedCountry] = useState<Country>(getDefaultCountry())
+
+  // Pricing controls
+  const [pricing, setPricing] = useState<PricingData>(getDefaultPricingData())
+
   // Creative controls
   const [showCreativeControls, setShowCreativeControls] = useState(false)
   const [creativeControls, setCreativeControls] = useState({
@@ -110,10 +125,6 @@ export default function ProductGeneratePage() {
     salesAngle: '',
     targetAvatar: '',
     additionalInstructions: '',
-    // Precios exactos para el banner
-    priceAfter: '',
-    priceBefore: '',
-    currencySymbol: '$',
   })
 
   // Generated sections history
@@ -139,7 +150,23 @@ export default function ProductGeneratePage() {
     fetchProduct()
     fetchTemplates()
     fetchGeneratedSections()
+    fetchApiKeyStatus()
   }, [productId])
+
+  const fetchApiKeyStatus = async () => {
+    try {
+      const response = await fetch('/api/keys')
+      const data = await response.json()
+      setApiKeyStatus({
+        google: data.hasGoogleApiKey || false,
+        openai: data.hasOpenaiApiKey || false,
+        bytedance: data.hasKieApiKey || false,
+        bfl: data.hasBflApiKey || false,
+      })
+    } catch (error) {
+      console.error('Error fetching API key status:', error)
+    }
+  }
 
   const fetchProduct = async () => {
     try {
@@ -252,20 +279,22 @@ export default function ProductGeneratePage() {
           templateUrl: selectedTemplate?.image_url || uploadedTemplate,
           productPhotos: productPhotos.filter(p => p !== null),
           outputSize: selectedSize.id,
-          provider: selectedProvider, // Selected AI model
-          creativeControls: {
-            // Always send price fields
-            priceAfter: creativeControls.priceAfter,
-            priceBefore: creativeControls.priceBefore,
-            currencySymbol: creativeControls.currencySymbol,
-            // Only send other fields if creative controls are enabled
-            ...(showCreativeControls ? {
-              productDetails: creativeControls.productDetails,
-              salesAngle: creativeControls.salesAngle,
-              targetAvatar: creativeControls.targetAvatar,
-              additionalInstructions: creativeControls.additionalInstructions,
-            } : {}),
-          },
+          modelId: selectedModel, // Selected AI model ID
+          provider: modelIdToProviderType(selectedModel), // Legacy provider type
+          // Country
+          targetCountry: selectedCountry.code,
+          // Pricing (all optional)
+          currencySymbol: pricing.currencySymbol,
+          priceAfter: pricing.priceAfter,
+          priceBefore: pricing.priceBefore,
+          priceCombo2: pricing.priceCombo2,
+          priceCombo3: pricing.priceCombo3,
+          creativeControls: showCreativeControls ? {
+            productDetails: creativeControls.productDetails,
+            salesAngle: creativeControls.salesAngle,
+            targetAvatar: creativeControls.targetAvatar,
+            additionalInstructions: creativeControls.additionalInstructions,
+          } : {},
         }),
       })
 
@@ -332,18 +361,13 @@ export default function ProductGeneratePage() {
         throw new Error(data.error || 'Error al mejorar')
       }
 
-      // Auto-fill creative controls (preserve price fields)
-      setCreativeControls(prev => ({
-        ...prev,
+      // Auto-fill creative controls
+      setCreativeControls({
         productDetails: data.suggestions.productDetails || '',
         salesAngle: data.suggestions.salesAngle || '',
         targetAvatar: data.suggestions.targetAvatar || '',
         additionalInstructions: data.suggestions.additionalInstructions || '',
-        // Preserve user's price fields
-        priceAfter: prev.priceAfter,
-        priceBefore: prev.priceBefore,
-        currencySymbol: prev.currencySymbol,
-      }))
+      })
       setShowCreativeControls(true)
 
       toast.success('¡Campos completados con IA!', { id: 'enhance' })
@@ -515,47 +539,10 @@ export default function ProductGeneratePage() {
 
       {/* Main Content */}
       <Card className="p-6 mb-6">
-        {/* Template and Product Photos Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          {/* Template Preview - Takes 2 columns */}
-          <div className="lg:col-span-2">
-            <div className="relative aspect-[16/10] bg-gradient-to-br from-surface to-background rounded-xl border border-border overflow-hidden">
-              {selectedTemplate || uploadedTemplate ? (
-                <>
-                  {/* Dimensions badge */}
-                  <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-sm px-2 py-1 rounded text-xs text-white">
-                    📐 {selectedTemplate?.dimensions || 'Custom'}
-                  </div>
-                  
-                  <img
-                    src={uploadedTemplate || selectedTemplate?.image_url}
-                    alt="Template"
-                    className="w-full h-full object-contain"
-                  />
-                  
-                  {/* Change template button */}
-                  <button
-                    onClick={() => setShowTemplateGallery(true)}
-                    className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-accent hover:bg-accent-hover text-background px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                  >
-                    Cambiar plantilla
-                  </button>
-                </>
-              ) : (
-                <button
-                  onClick={() => setShowTemplateGallery(true)}
-                  className="w-full h-full flex flex-col items-center justify-center hover:bg-accent/5 transition-colors"
-                >
-                  <LayoutTemplate className="w-12 h-12 text-accent/40 mb-3" />
-                  <p className="text-text-primary font-medium">Seleccionar Plantilla</p>
-                  <p className="text-sm text-text-secondary">de la Galería de Diseños</p>
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Product Photos - Takes 1 column */}
-          <div>
+        {/* Product Photos and Template Row - Horizontal Layout */}
+        <div className="flex gap-6 mb-6">
+          {/* Product Photos - Left side, horizontal */}
+          <div className="flex-shrink-0">
             <div className="flex items-center justify-between mb-3">
               <label className="text-sm font-medium text-text-primary">
                 Fotos del Producto
@@ -563,9 +550,9 @@ export default function ProductGeneratePage() {
               <span className="text-xs text-text-secondary">(1-3 fotos)</span>
             </div>
 
-            <div className="space-y-3">
+            <div className="flex gap-3">
               {[0, 1, 2].map((index) => (
-                <div key={index} className="aspect-square relative">
+                <div key={index} className="w-28 h-28 relative">
                   {productPhotos[index] ? (
                     <div className="w-full h-full rounded-xl overflow-hidden border border-border bg-surface">
                       <img
@@ -575,9 +562,9 @@ export default function ProductGeneratePage() {
                       />
                       <button
                         onClick={() => removePhoto(index)}
-                        className="absolute top-2 right-2 p-1.5 bg-background/80 rounded-lg hover:bg-error/20 hover:text-error transition-colors"
+                        className="absolute top-1 right-1 p-1 bg-background/80 rounded-lg hover:bg-error/20 hover:text-error transition-colors"
                       >
-                        <X className="w-4 h-4" />
+                        <X className="w-3 h-3" />
                       </button>
                     </div>
                   ) : (
@@ -585,8 +572,8 @@ export default function ProductGeneratePage() {
                       onClick={() => photoInputRefs[index].current?.click()}
                       className="w-full h-full rounded-xl border-2 border-dashed border-border hover:border-accent/50 hover:bg-accent/5 transition-colors flex flex-col items-center justify-center"
                     >
-                      <ImageIcon className="w-8 h-8 text-text-secondary/40 mb-2" />
-                      <span className="text-sm text-text-secondary">Imagen {index + 1}</span>
+                      <ImageIcon className="w-6 h-6 text-text-secondary/40 mb-1" />
+                      <span className="text-xs text-text-secondary">{index + 1}</span>
                     </button>
                   )}
                   <input
@@ -600,13 +587,88 @@ export default function ProductGeneratePage() {
               ))}
             </div>
           </div>
+
+          {/* Template Selector - Right side, takes remaining space */}
+          <div className="flex-1">
+            <div className="flex items-center justify-between mb-3">
+              <label className="text-sm font-medium text-text-primary">
+                Plantilla de Referencia
+              </label>
+            </div>
+
+            <div className="relative h-28 bg-gradient-to-br from-surface to-background rounded-xl border border-border overflow-hidden">
+              {selectedTemplate || uploadedTemplate ? (
+                <>
+                  {/* Dimensions badge */}
+                  <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm px-1.5 py-0.5 rounded text-[10px] text-white">
+                    {selectedTemplate?.dimensions || 'Custom'}
+                  </div>
+
+                  <img
+                    src={uploadedTemplate || selectedTemplate?.image_url}
+                    alt="Template"
+                    className="w-full h-full object-contain"
+                  />
+
+                  {/* Change template button */}
+                  <button
+                    onClick={() => setShowTemplateGallery(true)}
+                    className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-accent hover:bg-accent-hover text-background px-3 py-1 rounded-lg text-xs font-medium transition-colors"
+                  >
+                    Cambiar
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setShowTemplateGallery(true)}
+                  className="w-full h-full flex items-center justify-center gap-3 hover:bg-accent/5 transition-colors"
+                >
+                  <LayoutTemplate className="w-8 h-8 text-accent/40" />
+                  <div className="text-left">
+                    <p className="text-text-primary font-medium text-sm">Seleccionar Plantilla</p>
+                    <p className="text-xs text-text-secondary">de la Galería de Diseños</p>
+                  </div>
+                </button>
+              )}
+            </div>
+
+            {/* Upload Reference Image Button - Zepol gradient style */}
+            <button
+              onClick={() => templateInputRef.current?.click()}
+              className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-medium transition-all hover:opacity-90 bg-gradient-to-r from-purple-500 via-pink-500 to-rose-500"
+            >
+              <Upload className="w-4 h-4" />
+              Subir imagen de referencia
+            </button>
+            <input
+              ref={templateInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleTemplateUpload}
+            />
+          </div>
         </div>
 
         {/* AI Model Selection */}
         <div className="mb-6">
           <ModelSelector
-            value={selectedProvider}
-            onChange={setSelectedProvider}
+            value={selectedModel}
+            onChange={setSelectedModel}
+            disabled={isGenerating}
+            apiKeyStatus={apiKeyStatus}
+          />
+        </div>
+
+        {/* Country Selector */}
+        <div className="mb-6">
+          <CountrySelector
+            value={selectedCountry.code}
+            onChange={(country) => {
+              setSelectedCountry(country)
+              // Update currency symbol when country changes
+              setPricing(prev => ({ ...prev, currencySymbol: country.currencySymbol }))
+            }}
             disabled={isGenerating}
           />
         </div>
@@ -757,46 +819,13 @@ export default function ProductGeneratePage() {
           )}
         </div>
 
-        {/* Precios del Banner - SIEMPRE VISIBLE */}
+        {/* Pricing Controls */}
         <div className="border border-accent/30 bg-accent/5 rounded-xl p-4 mb-6">
-          <label className="text-sm font-medium text-text-primary flex items-center gap-2 mb-3">
-            💰 Precios del Banner <span className="text-xs text-accent font-normal">(Recomendado)</span>
-          </label>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="text-xs text-text-secondary mb-1 block">Símbolo</label>
-              <input
-                type="text"
-                placeholder="$"
-                value={creativeControls.currencySymbol}
-                onChange={(e) => setCreativeControls({ ...creativeControls, currencySymbol: e.target.value.slice(0, 5) })}
-                className="w-full px-3 py-2 bg-background border border-border rounded-lg text-text-primary text-center focus:outline-none focus:ring-2 focus:ring-accent/50"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-text-secondary mb-1 block">Precio Oferta</label>
-              <input
-                type="text"
-                placeholder="99.900"
-                value={creativeControls.priceAfter}
-                onChange={(e) => setCreativeControls({ ...creativeControls, priceAfter: e.target.value.slice(0, 15) })}
-                className="w-full px-3 py-2 bg-background border border-border rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/50"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-text-secondary mb-1 block">Precio Antes</label>
-              <input
-                type="text"
-                placeholder="149.900"
-                value={creativeControls.priceBefore}
-                onChange={(e) => setCreativeControls({ ...creativeControls, priceBefore: e.target.value.slice(0, 15) })}
-                className="w-full px-3 py-2 bg-background border border-border rounded-lg text-text-primary line-through focus:outline-none focus:ring-2 focus:ring-accent/50"
-              />
-            </div>
-          </div>
-          <p className="text-xs text-text-secondary mt-2">
-            Estos precios aparecerán exactamente como los escribas en el banner generado
-          </p>
+          <PricingControls
+            value={pricing}
+            onChange={setPricing}
+            disabled={isGenerating}
+          />
         </div>
 
         {/* Generate Button */}

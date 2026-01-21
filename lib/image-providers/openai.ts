@@ -1,10 +1,58 @@
 import { ImageProvider, GenerateImageRequest, GenerateImageResult } from './types'
 
+function buildPricingSection(request: GenerateImageRequest): string {
+  const { creativeControls } = request
+  const currencySymbol = creativeControls?.currencySymbol || '$'
+  const priceAfter = creativeControls?.priceAfter
+  const priceBefore = creativeControls?.priceBefore
+  const priceCombo2 = creativeControls?.priceCombo2
+  const priceCombo3 = creativeControls?.priceCombo3
+
+  // Check if any price is provided
+  const hasPricing = priceAfter || priceBefore || priceCombo2 || priceCombo3
+
+  if (!hasPricing) {
+    return 'DO NOT include prices in this banner - it is for branding/awareness only.'
+  }
+
+  const lines: string[] = ['EXACT PRICES (use these values, DO NOT invent):']
+
+  if (priceAfter) {
+    lines.push(`- OFFER Price: ${currencySymbol}${priceAfter} (main price, large and prominent)`)
+  }
+  if (priceBefore) {
+    lines.push(`- BEFORE Price: ${currencySymbol}${priceBefore} (crossed out, smaller)`)
+  }
+  if (priceCombo2) {
+    lines.push(`- Price for 2 UNITS: ${currencySymbol}${priceCombo2}`)
+  }
+  if (priceCombo3) {
+    lines.push(`- Price for 3 UNITS: ${currencySymbol}${priceCombo3}`)
+  }
+
+  return lines.join('\n')
+}
+
 function buildPrompt(request: GenerateImageRequest): string {
   const { productName, creativeControls } = request
-  const currencySymbol = creativeControls?.currencySymbol || '$'
-  const priceAfter = creativeControls?.priceAfter || ''
-  const priceBefore = creativeControls?.priceBefore || ''
+  const targetCountry = creativeControls?.targetCountry || 'CO'
+
+  // Map country codes to names
+  const countryNames: Record<string, string> = {
+    CO: 'Colombia',
+    MX: 'México',
+    PA: 'Panamá',
+    EC: 'Ecuador',
+    PE: 'Perú',
+    CL: 'Chile',
+    PY: 'Paraguay',
+    AR: 'Argentina',
+    GT: 'Guatemala',
+    ES: 'España',
+  }
+  const countryName = countryNames[targetCountry] || 'Colombia'
+
+  const pricingSection = buildPricingSection(request)
 
   return `Create a professional e-commerce banner in SPANISH for the product "${productName}".
 
@@ -20,9 +68,8 @@ PRODUCT:
 
 EXACT DATA FOR BANNER (USE THESE VALUES, DO NOT INVENT):
 - Product: ${productName}
-${priceAfter ? `- OFFER Price: ${currencySymbol}${priceAfter} (main price, large and prominent)` : ''}
-${priceBefore ? `- BEFORE Price: ${currencySymbol}${priceBefore} (crossed out, smaller)` : ''}
-- Country: Colombia
+- Target Country: ${countryName}
+${pricingSection}
 ${creativeControls?.productDetails ? `- Details: ${creativeControls.productDetails}` : ''}
 
 TEXT REQUIREMENTS:

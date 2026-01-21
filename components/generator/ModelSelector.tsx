@@ -1,32 +1,74 @@
 'use client'
 
-import { useState } from 'react'
-import { ChevronDown, Sparkles, Zap, Image as ImageIcon, Cpu } from 'lucide-react'
-import { ImageProviderType, IMAGE_PROVIDERS } from '@/lib/image-providers/types'
+import { useState, useEffect } from 'react'
+import { ChevronDown, Sparkles, Zap, Image as ImageIcon, Cpu, Star, Lock, Flame, Clock, Crown, Type } from 'lucide-react'
+import {
+  ImageModelId,
+  ImageProviderCompany,
+  IMAGE_MODELS,
+  IMAGE_COMPANY_GROUPS,
+  ModelTag,
+} from '@/lib/image-providers/types'
+
+interface ApiKeyStatus {
+  google: boolean
+  openai: boolean
+  bytedance: boolean
+  bfl: boolean
+}
 
 interface ModelSelectorProps {
-  value: ImageProviderType
-  onChange: (provider: ImageProviderType) => void
+  value: ImageModelId
+  onChange: (modelId: ImageModelId) => void
   disabled?: boolean
+  availableProviders?: ImageProviderCompany[]
+  apiKeyStatus?: ApiKeyStatus
 }
 
-const PROVIDER_ICONS: Record<ImageProviderType, React.ReactNode> = {
-  gemini: <Sparkles className="w-4 h-4" />,
-  openai: <Zap className="w-4 h-4" />,
-  seedream: <ImageIcon className="w-4 h-4" />,
-  flux: <Cpu className="w-4 h-4" />,
+const COMPANY_ICONS: Record<string, React.ReactNode> = {
+  Sparkles: <Sparkles className="w-4 h-4" />,
+  Zap: <Zap className="w-4 h-4" />,
+  Image: <ImageIcon className="w-4 h-4" />,
+  Cpu: <Cpu className="w-4 h-4" />,
 }
 
-const PROVIDER_COLORS: Record<ImageProviderType, string> = {
-  gemini: 'from-blue-500 to-purple-500',
-  openai: 'from-green-500 to-emerald-500',
-  seedream: 'from-orange-500 to-red-500',
-  flux: 'from-pink-500 to-rose-500',
+const TAG_CONFIG: Record<ModelTag, { label: string; color: string; icon: React.ReactNode }> = {
+  NEW: { label: 'NEW', color: 'bg-green-500/20 text-green-400 border-green-500/30', icon: <Sparkles className="w-2.5 h-2.5" /> },
+  TRENDING: { label: 'TRENDING', color: 'bg-orange-500/20 text-orange-400 border-orange-500/30', icon: <Flame className="w-2.5 h-2.5" /> },
+  FAST: { label: 'FAST', color: 'bg-blue-500/20 text-blue-400 border-blue-500/30', icon: <Clock className="w-2.5 h-2.5" /> },
+  PREMIUM: { label: 'PREMIUM', color: 'bg-purple-500/20 text-purple-400 border-purple-500/30', icon: <Crown className="w-2.5 h-2.5" /> },
+  BEST_TEXT: { label: 'BEST TEXT', color: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30', icon: <Type className="w-2.5 h-2.5" /> },
 }
 
-export default function ModelSelector({ value, onChange, disabled }: ModelSelectorProps) {
+export default function ModelSelector({
+  value,
+  onChange,
+  disabled,
+  availableProviders,
+  apiKeyStatus,
+}: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false)
-  const selectedProvider = IMAGE_PROVIDERS[value]
+  const selectedModel = IMAGE_MODELS[value]
+
+  // Filter companies based on available providers
+  const filteredGroups = availableProviders
+    ? IMAGE_COMPANY_GROUPS.filter((g) => availableProviders.includes(g.id))
+    : IMAGE_COMPANY_GROUPS
+
+  const handleModelSelect = (modelId: ImageModelId) => {
+    const model = IMAGE_MODELS[modelId]
+    // Check if API key is configured for this provider
+    if (apiKeyStatus && !apiKeyStatus[model.company]) {
+      return // Don't select if no API key
+    }
+    onChange(modelId)
+    setIsOpen(false)
+  }
+
+  const hasApiKey = (company: ImageProviderCompany): boolean => {
+    if (!apiKeyStatus) return true // Assume available if not checking
+    return apiKeyStatus[company]
+  }
 
   return (
     <div className="relative">
@@ -48,12 +90,32 @@ export default function ModelSelector({ value, onChange, disabled }: ModelSelect
         `}
       >
         <div className="flex items-center gap-3">
-          <div className={`p-2 rounded-lg bg-gradient-to-br ${PROVIDER_COLORS[value]} text-white`}>
-            {PROVIDER_ICONS[value]}
+          <div
+            className={`p-2 rounded-lg bg-gradient-to-br ${
+              IMAGE_COMPANY_GROUPS.find((g) => g.id === selectedModel.company)?.color
+            } text-white`}
+          >
+            {COMPANY_ICONS[IMAGE_COMPANY_GROUPS.find((g) => g.id === selectedModel.company)?.icon || 'Sparkles']}
           </div>
           <div>
-            <p className="text-text-primary font-medium">{selectedProvider.name}</p>
-            <p className="text-xs text-text-secondary">{selectedProvider.description}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-text-primary font-medium">{selectedModel.name}</p>
+              {selectedModel.recommended && (
+                <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />
+              )}
+              {selectedModel.tags?.map((tag) => (
+                <span
+                  key={tag}
+                  className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-bold rounded border ${TAG_CONFIG[tag].color}`}
+                >
+                  {TAG_CONFIG[tag].icon}
+                  {TAG_CONFIG[tag].label}
+                </span>
+              ))}
+            </div>
+            <p className="text-xs text-text-secondary">
+              {selectedModel.companyName} · {selectedModel.pricePerImage}
+            </p>
           </div>
         </div>
         <ChevronDown
@@ -61,56 +123,97 @@ export default function ModelSelector({ value, onChange, disabled }: ModelSelect
         />
       </button>
 
-      {/* Dropdown */}
+      {/* Hierarchical Dropdown - All Models Visible */}
       {isOpen && (
         <>
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setIsOpen(false)}
-          />
-          <div className="absolute z-50 w-full mt-2 bg-surface border border-border rounded-xl shadow-xl overflow-hidden">
-            {Object.entries(IMAGE_PROVIDERS).map(([id, provider]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => {
-                  onChange(id as ImageProviderType)
-                  setIsOpen(false)
-                }}
-                className={`
-                  w-full px-4 py-3 flex items-center gap-3 transition-colors
-                  ${value === id ? 'bg-accent/10' : 'hover:bg-background'}
-                `}
-              >
-                <div className={`p-2 rounded-lg bg-gradient-to-br ${PROVIDER_COLORS[id as ImageProviderType]} text-white`}>
-                  {PROVIDER_ICONS[id as ImageProviderType]}
+          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
+          <div className="absolute z-50 w-full mt-2 bg-surface border border-border rounded-xl shadow-xl overflow-hidden max-h-[500px] overflow-y-auto">
+            {filteredGroups.map((group) => {
+              const companyHasKey = hasApiKey(group.id)
+
+              return (
+                <div key={group.id} className="border-b border-border/50 last:border-b-0">
+                  {/* Company Header */}
+                  <div className="px-4 py-2.5 bg-background/50 flex items-center gap-3">
+                    <div className={`p-1.5 rounded-lg bg-gradient-to-br ${group.color} text-white`}>
+                      {COMPANY_ICONS[group.icon]}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-text-primary font-semibold text-sm">{group.name}</p>
+                    </div>
+                    {!companyHasKey && (
+                      <span className="flex items-center gap-1 px-2 py-1 bg-amber-500/10 text-amber-500 text-[10px] font-medium rounded-full border border-amber-500/20">
+                        <Lock className="w-3 h-3" />
+                        API Key requerida
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Models List - Always visible */}
+                  <div className="bg-surface">
+                    {group.models.map((model) => {
+                      const isSelected = value === model.id
+                      const isDisabled = !companyHasKey
+
+                      return (
+                        <button
+                          key={model.id}
+                          type="button"
+                          onClick={() => !isDisabled && handleModelSelect(model.id)}
+                          disabled={isDisabled}
+                          className={`
+                            w-full px-4 py-2.5 pl-12 flex items-center gap-3 transition-colors
+                            ${isSelected ? 'bg-accent/10' : isDisabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-background/50'}
+                          `}
+                        >
+                          <div className="text-left flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className={`font-medium text-sm ${isDisabled ? 'text-text-secondary' : 'text-text-primary'}`}>
+                                {model.name}
+                              </p>
+                              {model.recommended && (
+                                <span className="px-1.5 py-0.5 bg-yellow-500/20 text-yellow-500 text-[9px] font-bold rounded border border-yellow-500/30">
+                                  RECOMENDADO
+                                </span>
+                              )}
+                              {model.tags?.map((tag) => (
+                                <span
+                                  key={tag}
+                                  className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-bold rounded border ${TAG_CONFIG[tag].color}`}
+                                >
+                                  {TAG_CONFIG[tag].icon}
+                                  {TAG_CONFIG[tag].label}
+                                </span>
+                              ))}
+                            </div>
+                            <p className="text-xs text-text-secondary">{model.description}</p>
+                          </div>
+                          <span className="text-xs text-text-secondary whitespace-nowrap">{model.pricePerImage}</span>
+                          {isSelected && <div className="w-2 h-2 rounded-full bg-accent flex-shrink-0" />}
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
-                <div className="text-left flex-1">
-                  <p className="text-text-primary font-medium">{provider.name}</p>
-                  <p className="text-xs text-text-secondary">{provider.description}</p>
-                </div>
-                {value === id && (
-                  <div className="w-2 h-2 rounded-full bg-accent" />
-                )}
-              </button>
-            ))}
+              )
+            })}
           </div>
         </>
       )}
 
-      {/* Provider features */}
+      {/* Model features */}
       <div className="flex flex-wrap gap-2 mt-2">
-        {selectedProvider.supportsImageInput && (
+        {selectedModel.supportsImageInput && (
           <span className="px-2 py-0.5 bg-accent/10 text-accent text-xs rounded-full">
             Soporta imágenes
           </span>
         )}
-        {selectedProvider.supportsAspectRatio && (
+        {selectedModel.supportsAspectRatio && (
           <span className="px-2 py-0.5 bg-blue-500/10 text-blue-500 text-xs rounded-full">
             Aspect ratio
           </span>
         )}
-        {selectedProvider.requiresPolling && (
+        {selectedModel.requiresPolling && (
           <span className="px-2 py-0.5 bg-orange-500/10 text-orange-500 text-xs rounded-full">
             Async
           </span>
@@ -120,36 +223,91 @@ export default function ModelSelector({ value, onChange, disabled }: ModelSelect
   )
 }
 
-// Simple inline selector (alternative)
-export function ModelSelectorInline({
+// Compact grid version
+export function ModelSelectorGrid({
   value,
   onChange,
   disabled,
+  availableProviders,
+  apiKeyStatus,
 }: ModelSelectorProps) {
+  const filteredGroups = availableProviders
+    ? IMAGE_COMPANY_GROUPS.filter((g) => availableProviders.includes(g.id))
+    : IMAGE_COMPANY_GROUPS
+
+  const hasApiKey = (company: ImageProviderCompany): boolean => {
+    if (!apiKeyStatus) return true
+    return apiKeyStatus[company]
+  }
+
   return (
-    <div className="flex gap-2 flex-wrap">
-      {Object.entries(IMAGE_PROVIDERS).map(([id, provider]) => (
-        <button
-          key={id}
-          type="button"
-          onClick={() => !disabled && onChange(id as ImageProviderType)}
-          disabled={disabled}
-          className={`
-            px-4 py-2 rounded-xl border transition-all flex items-center gap-2
-            ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-            ${
-              value === id
-                ? 'border-accent bg-accent/10 text-accent'
-                : 'border-border hover:border-accent/50 text-text-secondary hover:text-text-primary'
-            }
-          `}
-        >
-          <div className={`p-1.5 rounded-lg bg-gradient-to-br ${PROVIDER_COLORS[id as ImageProviderType]} text-white`}>
-            {PROVIDER_ICONS[id as ImageProviderType]}
+    <div className="space-y-4">
+      <label className="flex items-center gap-2 text-sm font-medium text-text-primary">
+        <Sparkles className="w-4 h-4 text-accent" />
+        Modelo de IA
+      </label>
+
+      {filteredGroups.map((group) => {
+        const companyHasKey = hasApiKey(group.id)
+
+        return (
+          <div key={group.id} className="space-y-2">
+            <div className="flex items-center gap-2">
+              <div className={`p-1.5 rounded-lg bg-gradient-to-br ${group.color} text-white`}>
+                {COMPANY_ICONS[group.icon]}
+              </div>
+              <span className="text-sm font-medium text-text-primary">{group.name}</span>
+              {!companyHasKey && (
+                <span className="flex items-center gap-1 px-2 py-0.5 bg-amber-500/10 text-amber-500 text-[10px] font-medium rounded-full">
+                  <Lock className="w-3 h-3" />
+                  API Key requerida
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pl-8">
+              {group.models.map((model) => {
+                const isDisabled = disabled || !companyHasKey
+
+                return (
+                  <button
+                    key={model.id}
+                    type="button"
+                    onClick={() => !isDisabled && onChange(model.id)}
+                    disabled={isDisabled}
+                    className={`
+                      p-3 rounded-xl border transition-all text-left
+                      ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                      ${
+                        value === model.id
+                          ? 'border-accent bg-accent/10'
+                          : 'border-border hover:border-accent/50'
+                      }
+                    `}
+                  >
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium text-text-primary">{model.name}</span>
+                      {model.recommended && (
+                        <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />
+                      )}
+                      {model.tags?.map((tag) => (
+                        <span
+                          key={tag}
+                          className={`inline-flex items-center gap-0.5 px-1 py-0.5 text-[8px] font-bold rounded ${TAG_CONFIG[tag].color}`}
+                        >
+                          {TAG_CONFIG[tag].label}
+                        </span>
+                      ))}
+                    </div>
+                    <p className="text-xs text-text-secondary mt-1">{model.description}</p>
+                    <p className="text-xs text-accent mt-1">{model.pricePerImage}</p>
+                  </button>
+                )
+              })}
+            </div>
           </div>
-          <span className="text-sm font-medium">{provider.name}</span>
-        </button>
-      ))}
+        )
+      })}
     </div>
   )
 }

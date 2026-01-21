@@ -1,10 +1,39 @@
 import { ImageProvider, GenerateImageRequest, GenerateImageResult, mapAspectRatioForProvider } from './types'
 
+function buildPricingSection(request: GenerateImageRequest): string {
+  const { creativeControls } = request
+  const currencySymbol = creativeControls?.currencySymbol || '$'
+  const priceAfter = creativeControls?.priceAfter
+  const priceBefore = creativeControls?.priceBefore
+  const priceCombo2 = creativeControls?.priceCombo2
+  const priceCombo3 = creativeControls?.priceCombo3
+
+  const hasPricing = priceAfter || priceBefore || priceCombo2 || priceCombo3
+
+  if (!hasPricing) {
+    return 'NO prices in this banner - branding only.'
+  }
+
+  const lines: string[] = ['EXACT PRICES:']
+  if (priceAfter) lines.push(`- OFFER: ${currencySymbol}${priceAfter} (main, large)`)
+  if (priceBefore) lines.push(`- BEFORE: ${currencySymbol}${priceBefore} (crossed out)`)
+  if (priceCombo2) lines.push(`- 2 UNITS: ${currencySymbol}${priceCombo2}`)
+  if (priceCombo3) lines.push(`- 3 UNITS: ${currencySymbol}${priceCombo3}`)
+
+  return lines.join('\n')
+}
+
 function buildPrompt(request: GenerateImageRequest): string {
   const { productName, creativeControls } = request
-  const currencySymbol = creativeControls?.currencySymbol || '$'
-  const priceAfter = creativeControls?.priceAfter || ''
-  const priceBefore = creativeControls?.priceBefore || ''
+  const targetCountry = creativeControls?.targetCountry || 'CO'
+
+  const countryNames: Record<string, string> = {
+    CO: 'Colombia', MX: 'México', PA: 'Panamá', EC: 'Ecuador', PE: 'Perú',
+    CL: 'Chile', PY: 'Paraguay', AR: 'Argentina', GT: 'Guatemala', ES: 'España',
+  }
+  const countryName = countryNames[targetCountry] || 'Colombia'
+
+  const pricingSection = buildPricingSection(request)
 
   return `Create a professional e-commerce banner in SPANISH.
 
@@ -20,9 +49,8 @@ PRODUCT REPLACEMENT:
 
 EXACT DATA FOR BANNER:
 - Product: ${productName}
-${priceAfter ? `- OFFER Price: ${currencySymbol}${priceAfter} (main price, large and prominent)` : ''}
-${priceBefore ? `- BEFORE Price: ${currencySymbol}${priceBefore} (crossed out, smaller)` : ''}
-- Country: Colombia
+- Country: ${countryName}
+${pricingSection}
 ${creativeControls?.productDetails ? `- Details: ${creativeControls.productDetails}` : ''}
 
 TEXT:

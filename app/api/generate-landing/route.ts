@@ -42,6 +42,13 @@ export async function POST(request: Request) {
       outputSize,
       creativeControls,
       provider = 'gemini', // Default to Gemini
+      modelId, // New hierarchical model ID
+      targetCountry,
+      currencySymbol,
+      priceAfter,
+      priceBefore,
+      priceCombo2,
+      priceCombo3,
     } = body
 
     if (!templateUrl) {
@@ -145,7 +152,7 @@ export async function POST(request: Request) {
     // Get aspect ratio
     const aspectRatio = getAspectRatio(outputSize)
 
-    // Build generation request
+    // Build generation request with pricing data
     const generateRequest: GenerateImageRequest = {
       provider: selectedProvider,
       prompt: '', // Will be built by provider
@@ -154,7 +161,17 @@ export async function POST(request: Request) {
       productImagesBase64,
       aspectRatio,
       productName,
-      creativeControls,
+      creativeControls: {
+        ...creativeControls,
+        // Include pricing from separate fields
+        currencySymbol: currencySymbol || '$',
+        priceAfter,
+        priceBefore,
+        priceCombo2,
+        priceCombo3,
+        // Include country
+        targetCountry,
+      },
     }
 
     console.log(`Generating image with ${selectedProvider} for product:`, productName)
