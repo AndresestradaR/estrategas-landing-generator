@@ -2,16 +2,25 @@
 
 import { useState, useEffect } from 'react'
 import { Button, Input, Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui'
-import { Key, ExternalLink, Check, Loader2 } from 'lucide-react'
+import { Key, ExternalLink, Check, Loader2, Sparkles, Zap, Image as ImageIcon, Cpu } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export const dynamic = 'force-dynamic'
 
+interface ApiKeyState {
+  value: string
+  hasKey: boolean
+  isSaving: boolean
+}
+
 export default function SettingsPage() {
-  const [googleApiKey, setGoogleApiKey] = useState('')
-  const [hasGoogleApiKey, setHasGoogleApiKey] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [isSaving, setIsSaving] = useState(false)
+
+  // API Keys state
+  const [googleKey, setGoogleKey] = useState<ApiKeyState>({ value: '', hasKey: false, isSaving: false })
+  const [openaiKey, setOpenaiKey] = useState<ApiKeyState>({ value: '', hasKey: false, isSaving: false })
+  const [kieKey, setKieKey] = useState<ApiKeyState>({ value: '', hasKey: false, isSaving: false })
+  const [bflKey, setBflKey] = useState<ApiKeyState>({ value: '', hasKey: false, isSaving: false })
 
   useEffect(() => {
     fetchKeys()
@@ -21,8 +30,19 @@ export default function SettingsPage() {
     try {
       const response = await fetch('/api/keys')
       const data = await response.json()
-      if (data.hasGoogleApiKey) setHasGoogleApiKey(true)
-      if (data.maskedGoogleApiKey) setGoogleApiKey(data.maskedGoogleApiKey)
+
+      if (data.hasGoogleApiKey) {
+        setGoogleKey(prev => ({ ...prev, hasKey: true, value: data.maskedGoogleApiKey || '' }))
+      }
+      if (data.hasOpenaiApiKey) {
+        setOpenaiKey(prev => ({ ...prev, hasKey: true, value: data.maskedOpenaiApiKey || '' }))
+      }
+      if (data.hasKieApiKey) {
+        setKieKey(prev => ({ ...prev, hasKey: true, value: data.maskedKieApiKey || '' }))
+      }
+      if (data.hasBflApiKey) {
+        setBflKey(prev => ({ ...prev, hasKey: true, value: data.maskedBflApiKey || '' }))
+      }
     } catch (error) {
       console.error('Error fetching keys:', error)
     } finally {
@@ -30,20 +50,29 @@ export default function SettingsPage() {
     }
   }
 
-  const handleSave = async () => {
-    setIsSaving(true)
+  const handleSaveKey = async (keyType: 'google' | 'openai' | 'kie' | 'bfl') => {
+    const keyMap = {
+      google: { state: googleKey, setter: setGoogleKey, field: 'googleApiKey' },
+      openai: { state: openaiKey, setter: setOpenaiKey, field: 'openaiApiKey' },
+      kie: { state: kieKey, setter: setKieKey, field: 'kieApiKey' },
+      bfl: { state: bflKey, setter: setBflKey, field: 'bflApiKey' },
+    }
+
+    const { state, setter, field } = keyMap[keyType]
+
+    // Only send key if it doesn't look like a masked value
+    if (!state.value || state.value.includes('•')) {
+      toast.error('Ingresa una API key válida')
+      return
+    }
+
+    setter(prev => ({ ...prev, isSaving: true }))
 
     try {
-      // Only send key if it doesn't look like a masked value
-      if (!googleApiKey || googleApiKey.includes('•')) {
-        toast.error('Ingresa tu API key de Google')
-        return
-      }
-
       const response = await fetch('/api/keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ googleApiKey }),
+        body: JSON.stringify({ [field]: state.value }),
       })
 
       const data = await response.json()
@@ -53,11 +82,11 @@ export default function SettingsPage() {
       }
 
       toast.success('API key guardada correctamente')
-      fetchKeys() // Refresh the masked key
+      fetchKeys() // Refresh the masked keys
     } catch (error: any) {
       toast.error(error.message || 'Error al guardar')
     } finally {
-      setIsSaving(false)
+      setter(prev => ({ ...prev, isSaving: false }))
     }
   }
 
@@ -74,73 +103,217 @@ export default function SettingsPage() {
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-text-primary">Configuración</h1>
         <p className="text-text-secondary mt-1">
-          Configura tu API key para comenzar a generar
+          Configura tus API keys para los diferentes modelos de IA
         </p>
       </div>
 
-      <Card>
+      {/* Google/Gemini API Key */}
+      <Card className="mb-4">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Key className="w-5 h-5" />
-            Google AI API Key
+            <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500 to-purple-500 text-white">
+              <Sparkles className="w-4 h-4" />
+            </div>
+            Google AI (Gemini)
+            {googleKey.hasKey && (
+              <span className="flex items-center gap-1 text-xs text-success ml-auto">
+                <Check className="w-3 h-3" />
+                Configurada
+              </span>
+            )}
           </CardTitle>
           <CardDescription>
-            Tu API key de Google AI Studio. Se usa para generar imágenes (Nano Banana Pro) y mejorar prompts (Gemini).
+            Para: Gemini 2.5 Flash Image (~$0.02/img) - Mejor para texto en imágenes
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Google API Key */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-text-primary">
-                API Key
-                <span className="text-error"> *</span>
-              </label>
-              {hasGoogleApiKey && (
-                <span className="flex items-center gap-1 text-xs text-success">
-                  <Check className="w-3 h-3" />
-                  Configurada
-                </span>
-              )}
-            </div>
+        <CardContent className="space-y-4">
+          <div className="flex gap-2">
             <Input
               type="password"
               placeholder="AIzaSy..."
-              value={googleApiKey}
-              onChange={(e) => setGoogleApiKey(e.target.value)}
+              value={googleKey.value}
+              onChange={(e) => setGoogleKey(prev => ({ ...prev, value: e.target.value }))}
+              className="flex-1"
             />
-            <a 
-              href="https://aistudio.google.com/app/apikey" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-accent hover:text-accent-hover transition-colors"
+            <Button
+              onClick={() => handleSaveKey('google')}
+              isLoading={googleKey.isSaving}
             >
-              Obtener API Key <ExternalLink className="w-3 h-3" />
-            </a>
+              Guardar
+            </Button>
           </div>
-
-          <Button 
-            className="w-full" 
-            onClick={handleSave}
-            isLoading={isSaving}
+          <a
+            href="https://aistudio.google.com/app/apikey"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-accent hover:text-accent-hover transition-colors"
           >
-            Guardar API Key
-          </Button>
+            Obtener API Key <ExternalLink className="w-3 h-3" />
+          </a>
+        </CardContent>
+      </Card>
+
+      {/* OpenAI API Key */}
+      <Card className="mb-4">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <div className="p-2 rounded-lg bg-gradient-to-br from-green-500 to-emerald-500 text-white">
+              <Zap className="w-4 h-4" />
+            </div>
+            OpenAI (GPT Image)
+            {openaiKey.hasKey && (
+              <span className="flex items-center gap-1 text-xs text-success ml-auto">
+                <Check className="w-3 h-3" />
+                Configurada
+              </span>
+            )}
+          </CardTitle>
+          <CardDescription>
+            Para: GPT Image 1 (~$0.04/img) - Alta calidad fotorealista
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex gap-2">
+            <Input
+              type="password"
+              placeholder="sk-..."
+              value={openaiKey.value}
+              onChange={(e) => setOpenaiKey(prev => ({ ...prev, value: e.target.value }))}
+              className="flex-1"
+            />
+            <Button
+              onClick={() => handleSaveKey('openai')}
+              isLoading={openaiKey.isSaving}
+            >
+              Guardar
+            </Button>
+          </div>
+          <a
+            href="https://platform.openai.com/api-keys"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-accent hover:text-accent-hover transition-colors"
+          >
+            Obtener API Key <ExternalLink className="w-3 h-3" />
+          </a>
+        </CardContent>
+      </Card>
+
+      {/* KIE.ai API Key */}
+      <Card className="mb-4">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <div className="p-2 rounded-lg bg-gradient-to-br from-orange-500 to-red-500 text-white">
+              <ImageIcon className="w-4 h-4" />
+            </div>
+            KIE.ai (Seedream)
+            {kieKey.hasKey && (
+              <span className="flex items-center gap-1 text-xs text-success ml-auto">
+                <Check className="w-3 h-3" />
+                Configurada
+              </span>
+            )}
+          </CardTitle>
+          <CardDescription>
+            Para: Seedream 4.5 (~$0.032/img) - Excelente para edición de imágenes
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex gap-2">
+            <Input
+              type="password"
+              placeholder="kie_..."
+              value={kieKey.value}
+              onChange={(e) => setKieKey(prev => ({ ...prev, value: e.target.value }))}
+              className="flex-1"
+            />
+            <Button
+              onClick={() => handleSaveKey('kie')}
+              isLoading={kieKey.isSaving}
+            >
+              Guardar
+            </Button>
+          </div>
+          <a
+            href="https://kie.ai/dashboard"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-accent hover:text-accent-hover transition-colors"
+          >
+            Obtener API Key <ExternalLink className="w-3 h-3" />
+          </a>
+        </CardContent>
+      </Card>
+
+      {/* BFL API Key */}
+      <Card className="mb-4">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <div className="p-2 rounded-lg bg-gradient-to-br from-pink-500 to-rose-500 text-white">
+              <Cpu className="w-4 h-4" />
+            </div>
+            Black Forest Labs (FLUX)
+            {bflKey.hasKey && (
+              <span className="flex items-center gap-1 text-xs text-success ml-auto">
+                <Check className="w-3 h-3" />
+                Configurada
+              </span>
+            )}
+          </CardTitle>
+          <CardDescription>
+            Para: FLUX Pro 1.1 (~$0.04/img) - Generación ultra rápida
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex gap-2">
+            <Input
+              type="password"
+              placeholder="bfl_..."
+              value={bflKey.value}
+              onChange={(e) => setBflKey(prev => ({ ...prev, value: e.target.value }))}
+              className="flex-1"
+            />
+            <Button
+              onClick={() => handleSaveKey('bfl')}
+              isLoading={bflKey.isSaving}
+            >
+              Guardar
+            </Button>
+          </div>
+          <a
+            href="https://api.bfl.ai/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-accent hover:text-accent-hover transition-colors"
+          >
+            Obtener API Key <ExternalLink className="w-3 h-3" />
+          </a>
         </CardContent>
       </Card>
 
       {/* Info Card */}
       <Card className="mt-6" variant="glass">
         <CardContent className="pt-6">
-          <h3 className="font-medium text-text-primary mb-2">¿Qué incluye?</h3>
+          <h3 className="font-medium text-text-primary mb-2">¿Por qué múltiples modelos?</h3>
+          <p className="text-sm text-text-secondary mb-4">
+            Cada modelo tiene fortalezas diferentes. Puedes elegir el mejor para cada caso:
+          </p>
           <ul className="text-sm text-text-secondary space-y-2">
             <li className="flex items-start gap-2">
-              <span className="text-accent">•</span>
-              <span><strong>Nano Banana Pro</strong> - Generación de imágenes de alta calidad para tus landings</span>
+              <span className="text-blue-500">•</span>
+              <span><strong>Gemini</strong> - Mejor para banners con texto legible</span>
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-accent">•</span>
-              <span><strong>Gemini</strong> - Mejora automática de prompts para mejores resultados</span>
+              <span className="text-green-500">•</span>
+              <span><strong>GPT Image</strong> - Calidad fotorealista superior</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-orange-500">•</span>
+              <span><strong>Seedream</strong> - Ideal para editar y combinar imágenes</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-pink-500">•</span>
+              <span><strong>FLUX</strong> - Generación rápida con buenos resultados</span>
             </li>
           </ul>
         </CardContent>
@@ -149,10 +322,10 @@ export default function SettingsPage() {
       {/* BYOK Info */}
       <Card className="mt-4" variant="glass">
         <CardContent className="pt-6">
-          <h3 className="font-medium text-text-primary mb-2">¿Por qué necesito mi propia key?</h3>
+          <h3 className="font-medium text-text-primary mb-2">Modelo BYOK</h3>
           <p className="text-sm text-text-secondary">
-            Estrategas IA utiliza el modelo BYOK (Bring Your Own Key) para darte control total 
-            sobre tus costos. Solo pagas lo que consumes directamente a Google, sin intermediarios.
+            Solo necesitas configurar las API keys de los modelos que quieras usar.
+            Pagas directamente a cada proveedor, sin intermediarios ni markup.
           </p>
         </CardContent>
       </Card>

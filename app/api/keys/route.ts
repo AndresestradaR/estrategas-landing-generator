@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { encrypt, decrypt, mask } from '@/lib/services/encryption'
+import { encrypt, mask } from '@/lib/services/encryption'
 
 export async function GET() {
   try {
@@ -13,7 +13,7 @@ export async function GET() {
 
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('google_api_key')
+      .select('google_api_key, openai_api_key, kie_api_key, bfl_api_key')
       .eq('id', user.id)
       .single()
 
@@ -21,10 +21,20 @@ export async function GET() {
       return NextResponse.json({ error: 'Perfil no encontrado' }, { status: 404 })
     }
 
-    // Return masked key
+    // Return masked keys
     return NextResponse.json({
+      // Google/Gemini
       maskedGoogleApiKey: mask(profile.google_api_key),
       hasGoogleApiKey: !!profile.google_api_key,
+      // OpenAI
+      maskedOpenaiApiKey: mask(profile.openai_api_key),
+      hasOpenaiApiKey: !!profile.openai_api_key,
+      // KIE.ai
+      maskedKieApiKey: mask(profile.kie_api_key),
+      hasKieApiKey: !!profile.kie_api_key,
+      // BFL
+      maskedBflApiKey: mask(profile.bfl_api_key),
+      hasBflApiKey: !!profile.bfl_api_key,
     })
   } catch (error) {
     return NextResponse.json({ error: 'Error interno' }, { status: 500 })
@@ -41,20 +51,33 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { googleApiKey } = body
+    const { googleApiKey, openaiApiKey, kieApiKey, bflApiKey } = body
 
-    if (!googleApiKey) {
-      return NextResponse.json({ error: 'API key requerida' }, { status: 400 })
+    // Build update object with only provided keys
+    const updateData: Record<string, string> = {}
+
+    if (googleApiKey) {
+      updateData.google_api_key = encrypt(googleApiKey)
+    }
+    if (openaiApiKey) {
+      updateData.openai_api_key = encrypt(openaiApiKey)
+    }
+    if (kieApiKey) {
+      updateData.kie_api_key = encrypt(kieApiKey)
+    }
+    if (bflApiKey) {
+      updateData.bfl_api_key = encrypt(bflApiKey)
     }
 
-    // Encrypt key before storing
-    const encryptedKey = encrypt(googleApiKey)
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ error: 'API key requerida' }, { status: 400 })
+    }
 
     // Use service client to update (bypasses RLS for update)
     const serviceClient = await createServiceClient()
     const { error: updateError } = await serviceClient
       .from('profiles')
-      .update({ google_api_key: encryptedKey })
+      .update(updateData)
       .eq('id', user.id)
 
     if (updateError) {
