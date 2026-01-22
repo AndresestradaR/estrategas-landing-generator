@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Button, Input, Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui'
-import { Key, ExternalLink, Check, Loader2, Sparkles, Zap, Image as ImageIcon, Cpu } from 'lucide-react'
+import { Key, ExternalLink, Check, Loader2, Sparkles, Zap, Image as ImageIcon, Cpu, PlayCircle, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export const dynamic = 'force-dynamic'
@@ -15,6 +15,7 @@ interface ApiKeyState {
 
 export default function SettingsPage() {
   const [isLoading, setIsLoading] = useState(true)
+  const [showVideo, setShowVideo] = useState(false)
 
   // API Keys state
   const [googleKey, setGoogleKey] = useState<ApiKeyState>({ value: '', hasKey: false, isSaving: false })
@@ -106,6 +107,65 @@ export default function SettingsPage() {
           Configura tus API keys para los diferentes modelos de IA
         </p>
       </div>
+
+      {/* Video Tutorial Banner */}
+      <Card className="mb-6 overflow-hidden border-accent/30 bg-gradient-to-r from-accent/10 to-transparent">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-full bg-accent/20">
+                <PlayCircle className="w-6 h-6 text-accent" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-text-primary">¿No sabes cómo obtener las API Keys?</h3>
+                <p className="text-sm text-text-secondary">Mira este tutorial de 4 minutos</p>
+              </div>
+            </div>
+            <Button
+              onClick={() => setShowVideo(true)}
+              variant="default"
+              size="sm"
+              className="shrink-0"
+            >
+              <PlayCircle className="w-4 h-4 mr-2" />
+              Ver Tutorial
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Video Modal */}
+      {showVideo && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setShowVideo(false)}
+        >
+          <div 
+            className="relative w-full max-w-4xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setShowVideo(false)}
+              className="absolute -top-12 right-0 p-2 text-white/70 hover:text-white transition-colors"
+            >
+              <X className="w-8 h-8" />
+            </button>
+            <div className="rounded-xl overflow-hidden shadow-2xl">
+              <video
+                src="https://papfcbiswvdgalfteujm.supabase.co/storage/v1/object/public/Videos/Tutorial%20Apis%20keys.mp4"
+                controls
+                autoPlay
+                className="w-full aspect-video bg-black"
+              >
+                Tu navegador no soporta videos HTML5.
+              </video>
+            </div>
+            <p className="text-center text-white/50 text-sm mt-4">
+              Click afuera o presiona la X para cerrar
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Google/Gemini API Key */}
       <Card className="mb-4">
