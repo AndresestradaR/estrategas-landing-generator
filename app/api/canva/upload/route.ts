@@ -131,6 +131,8 @@ async function createDesignWithAsset(
   assetId: string,
   title: string
 ): Promise<string> {
+  // Canva API requires design_type to be an object with type and dimensions
+  // For stories format: 1080x1920
   const response = await fetch(CANVA_CONFIG.designEndpoint, {
     method: 'POST',
     headers: {
@@ -138,9 +140,13 @@ async function createDesignWithAsset(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      design_type: 'custom',
-      title: title,
+      design_type: {
+        type: 'custom',
+        width: 1080,
+        height: 1920,
+      },
       asset_id: assetId,
+      title: title,
     }),
   })
 
@@ -211,7 +217,7 @@ export async function POST(request: Request) {
     const filename = `${productName || 'banner'}-${sectionId || Date.now()}.png`
     const assetId = await uploadAsset(accessToken, imageBase64, filename)
 
-    // Create design
+    // Create design with correct format
     const title = `Banner ${productName || 'Estrategas'}`
     const editUrl = await createDesignWithAsset(accessToken, assetId, title)
 
