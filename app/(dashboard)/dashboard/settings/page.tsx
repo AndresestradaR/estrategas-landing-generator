@@ -123,7 +123,6 @@ export default function SettingsPage() {
             </div>
             <Button
               onClick={() => setShowVideo(true)}
-              variant="default"
               size="sm"
               className="shrink-0"
             >
