@@ -2,11 +2,7 @@ import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { generateCodeVerifier, generateCodeChallenge, generateState, CANVA_CONFIG } from '@/lib/canva/pkce'
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url)
-  const imageData = searchParams.get('imageData')
-  const sectionId = searchParams.get('sectionId')
-
+export async function GET() {
   // Check for Canva credentials
   const clientId = process.env.CANVA_CLIENT_ID
   if (!clientId) {
@@ -39,24 +35,6 @@ export async function GET(request: Request) {
     maxAge: 60 * 10,
     path: '/',
   })
-
-  // Store image data for after callback (if provided)
-  if (imageData && sectionId) {
-    cookieStore.set('canva_image_data', imageData.substring(0, 4000), { // Limit size
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 10,
-      path: '/',
-    })
-    cookieStore.set('canva_section_id', sectionId, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 60 * 10,
-      path: '/',
-    })
-  }
 
   // Build authorization URL
   const redirectUri = process.env.CANVA_REDIRECT_URI || 'https://estrategas-landing-generator.vercel.app/api/canva/callback'
