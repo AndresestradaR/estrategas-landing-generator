@@ -73,7 +73,10 @@ export const fluxProvider: ImageProvider = {
 
   async generate(request: GenerateImageRequest, apiKey: string): Promise<GenerateImageResult> {
     try {
-      const prompt = buildPrompt(request)
+      // Use direct prompt if provided (Studio IA), otherwise build landing prompt
+      const prompt = request.prompt && request.prompt.trim()
+        ? request.prompt
+        : buildPrompt(request)
 
       // Get the API model ID from the selected model (default to flux-2-pro)
       const apiModelId = request.modelId ? getApiModelId(request.modelId) : 'flux-2-pro'
