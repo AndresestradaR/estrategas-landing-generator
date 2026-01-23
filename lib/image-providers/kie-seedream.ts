@@ -1,27 +1,5 @@
 import { ImageProvider, GenerateImageRequest, GenerateImageResult, getApiModelId } from './types'
 
-// Helper function to convert image to PNG data URL for API compatibility
-// Only used when we don't have a public URL
-async function convertToPngDataUrl(base64Data: string, mimeType: string): Promise<string> {
-  // If already png or jpg, return as-is
-  if (mimeType === 'image/png' || mimeType === 'image/jpeg' || mimeType === 'image/jpg') {
-    return `data:${mimeType};base64,${base64Data}`
-  }
-
-  // For webp and other formats, convert to PNG using sharp
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const sharp = require('sharp')
-    const inputBuffer = Buffer.from(base64Data, 'base64')
-    const pngBuffer = await sharp(inputBuffer).png().toBuffer()
-    console.log('[Seedream] Successfully converted image to PNG')
-    return `data:image/png;base64,${pngBuffer.toString('base64')}`
-  } catch (e: any) {
-    console.warn('[Seedream] Could not convert image:', e.message)
-    return `data:image/png;base64,${base64Data}`
-  }
-}
-
 function buildPricingSection(request: GenerateImageRequest): string {
   const { creativeControls } = request
   const currencySymbol = creativeControls?.currencySymbol || '$'
@@ -98,10 +76,11 @@ export const seedreamProvider: ImageProvider = {
         ? request.prompt
         : buildPrompt(request)
 
-      // Detect if there are reference images (URL or base64)
-      const hasReferenceImages = (request.productImagesBase64 && request.productImagesBase64.length > 0) ||
-                                  (request.templateBase64 && request.templateMimeType) ||
-                                  request.templateUrl
+      // Detect if there are reference images
+      // KIE.ai REQUIRES public URLs - not data URLs!
+      const hasTemplateUrl = request.templateUrl && request.templateUrl.startsWith('http')
+      const hasProductUrls = request.productImageUrls && request.productImageUrls.length > 0
+      const hasReferenceImages = hasTemplateUrl || hasProductUrls
 
       // Get the API model ID from the selected model
       let apiModelId = request.modelId ? getApiModelId(request.modelId) : 'seedream/4.5-text-to-image'
@@ -117,8 +96,8 @@ export const seedreamProvider: ImageProvider = {
       }
 
       console.log('[Seedream] Creating task with model:', apiModelId)
-      console.log('[Seedream] Has reference images:', hasReferenceImages)
-      console.log('[Seedream] Template URL:', request.templateUrl || 'N/A')
+      console.log('[Seedream] Has template URL:', hasTemplateUrl, request.templateUrl?.substring(0, 50))
+      console.log('[Seedream] Has product URLs:', hasProductUrls, request.productImageUrls?.length || 0)
 
       // Determine model version based on model ID
       const is45 = apiModelId.startsWith('seedream/')
@@ -137,36 +116,27 @@ export const seedreamProvider: ImageProvider = {
           quality: is4K ? 'high' : 'basic',
         }
         // Add image_urls for edit mode
-        // IMPORTANT: KIE.ai requires PUBLIC URLs, not data URLs!
-        // KIE.ai supports webp via URL, so we can use Supabase URLs directly
+        // IMPORTANT: KIE.ai requires PUBLIC URLs only!
         if (hasReferenceImages) {
           const imageUrls: string[] = []
 
-          // Template: prefer public URL (KIE.ai accepts webp via URL)
-          if (request.templateUrl && request.templateUrl.startsWith('http')) {
-            console.log('[Seedream] Using public template URL directly:', request.templateUrl)
+          // Template URL (public Supabase URL)
+          if (hasTemplateUrl && request.templateUrl) {
+            console.log('[Seedream] Adding template URL:', request.templateUrl)
             imageUrls.push(request.templateUrl)
-          } else if (request.templateBase64 && request.templateMimeType) {
-            // Fallback to data URL only if no public URL available
-            // Note: This may not work well with KIE.ai which prefers URLs
-            console.log('[Seedream] No public URL, using base64 data URL')
-            const dataUrl = await convertToPngDataUrl(request.templateBase64, request.templateMimeType)
-            imageUrls.push(dataUrl)
           }
 
-          // Product images - these are user uploads, likely already jpg/png
-          // KIE.ai prefers URLs, but we only have base64 for user uploads
-          if (request.productImagesBase64) {
-            for (const img of request.productImagesBase64) {
-              const dataUrl = await convertToPngDataUrl(img.data, img.mimeType)
-              imageUrls.push(dataUrl)
+          // Product image URLs (uploaded to Supabase Storage)
+          if (hasProductUrls && request.productImageUrls) {
+            for (const url of request.productImageUrls) {
+              console.log('[Seedream] Adding product URL:', url)
+              imageUrls.push(url)
             }
           }
 
           if (imageUrls.length > 0) {
             input.image_urls = imageUrls
-            console.log('[Seedream] Sending', imageUrls.length, 'images')
-            console.log('[Seedream] First image type:', imageUrls[0].substring(0, 50))
+            console.log('[Seedream] Total image URLs:', imageUrls.length)
           }
         }
       } else if (is30) {
@@ -212,33 +182,26 @@ export const seedreamProvider: ImageProvider = {
         if (hasReferenceImages) {
           const imageUrls: string[] = []
 
-          // Template: prefer public URL
-          if (request.templateUrl && request.templateUrl.startsWith('http')) {
-            console.log('[Seedream] Using public template URL directly:', request.templateUrl)
+          if (hasTemplateUrl && request.templateUrl) {
             imageUrls.push(request.templateUrl)
-          } else if (request.templateBase64 && request.templateMimeType) {
-            console.log('[Seedream] No public URL, using base64 data URL')
-            const dataUrl = await convertToPngDataUrl(request.templateBase64, request.templateMimeType)
-            imageUrls.push(dataUrl)
           }
 
-          // Product images
-          if (request.productImagesBase64) {
-            for (const img of request.productImagesBase64) {
-              const dataUrl = await convertToPngDataUrl(img.data, img.mimeType)
-              imageUrls.push(dataUrl)
+          if (hasProductUrls && request.productImageUrls) {
+            for (const url of request.productImageUrls) {
+              imageUrls.push(url)
             }
           }
 
           if (imageUrls.length > 0) {
             input.image_urls = imageUrls
-            console.log('[Seedream] Sending', imageUrls.length, 'images')
           }
         }
       }
 
-      console.log('[Seedream] Input keys:', Object.keys(input))
-      console.log('[Seedream] Image URLs count:', input.image_urls?.length || 0)
+      console.log('[Seedream] Input:', JSON.stringify({
+        ...input,
+        image_urls: input.image_urls?.length || 0,
+      }))
 
       // Create task via KIE.ai API
       const requestBody = {
