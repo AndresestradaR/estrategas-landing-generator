@@ -76,10 +76,25 @@ export const seedreamProvider: ImageProvider = {
         ? request.prompt
         : buildPrompt(request)
 
+      // Detect if there are reference images
+      const hasReferenceImages = (request.productImagesBase64 && request.productImagesBase64.length > 0) ||
+                                  (request.templateBase64 && request.templateMimeType)
+
       // Get the API model ID from the selected model
-      const apiModelId = request.modelId ? getApiModelId(request.modelId) : 'seedream/4.5-text-to-image'
+      let apiModelId = request.modelId ? getApiModelId(request.modelId) : 'seedream/4.5-text-to-image'
+
+      // If there are reference images, use the "edit" model variant
+      if (hasReferenceImages) {
+        if (apiModelId === 'seedream/4.5-text-to-image') {
+          apiModelId = 'seedream/4.5-edit'
+        } else if (apiModelId === 'bytedance/seedream-v4-text-to-image') {
+          apiModelId = 'bytedance/seedream-v4-edit'
+        }
+        // Note: Seedream 3.0 (bytedance/seedream) doesn't support image input
+      }
 
       console.log('[Seedream] Creating task with model:', apiModelId)
+      console.log('[Seedream] Has reference images:', hasReferenceImages)
 
       // Determine model version based on model ID
       // - Seedream 4.5: 'seedream/4.5-text-to-image' (starts with 'seedream/')
@@ -99,6 +114,21 @@ export const seedreamProvider: ImageProvider = {
           prompt: prompt,
           aspect_ratio: request.aspectRatio || '9:16',
           quality: is4K ? 'high' : 'basic',
+        }
+        // Add image_urls for edit mode
+        if (hasReferenceImages) {
+          const imageUrls: string[] = []
+          if (request.templateBase64 && request.templateMimeType) {
+            imageUrls.push(`data:${request.templateMimeType};base64,${request.templateBase64}`)
+          }
+          if (request.productImagesBase64) {
+            for (const img of request.productImagesBase64) {
+              imageUrls.push(`data:${img.mimeType};base64,${img.data}`)
+            }
+          }
+          if (imageUrls.length > 0) {
+            input.image_urls = imageUrls
+          }
         }
       } else if (is30) {
         // Seedream 3.0 uses: image_size (different params than 4.0)
@@ -140,6 +170,21 @@ export const seedreamProvider: ImageProvider = {
           image_size: imageSize,
           image_resolution: resolution,
           max_images: 1,
+        }
+        // Add image_urls for edit mode
+        if (hasReferenceImages) {
+          const imageUrls: string[] = []
+          if (request.templateBase64 && request.templateMimeType) {
+            imageUrls.push(`data:${request.templateMimeType};base64,${request.templateBase64}`)
+          }
+          if (request.productImagesBase64) {
+            for (const img of request.productImagesBase64) {
+              imageUrls.push(`data:${img.mimeType};base64,${img.data}`)
+            }
+          }
+          if (imageUrls.length > 0) {
+            input.image_urls = imageUrls
+          }
         }
       }
 

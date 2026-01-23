@@ -88,15 +88,24 @@ export const fluxProvider: ImageProvider = {
         aspect_ratio: request.aspectRatio || '9:16',
       }
 
-      // Add image input for models that support it (Kontext, Fill, etc.)
+      // Add image input for models that support it (Kontext, Fill, Flex, Pro, Max, Klein)
       const supportsImageInput = apiModelId.includes('kontext') ||
                                   apiModelId.includes('fill') ||
                                   apiModelId.includes('flex') ||
+                                  apiModelId.includes('klein') ||
                                   apiModelId === 'flux-2-pro' ||
                                   apiModelId === 'flux-2-max'
 
-      if (supportsImageInput && request.templateBase64 && request.templateMimeType) {
-        requestBody.image_prompt = request.templateBase64
+      // Get image from template or product images
+      let imageBase64: string | null = null
+      if (request.templateBase64) {
+        imageBase64 = request.templateBase64
+      } else if (request.productImagesBase64 && request.productImagesBase64.length > 0) {
+        imageBase64 = request.productImagesBase64[0].data
+      }
+
+      if (supportsImageInput && imageBase64) {
+        requestBody.image_prompt = imageBase64
         requestBody.image_prompt_strength = 0.5
       }
 
