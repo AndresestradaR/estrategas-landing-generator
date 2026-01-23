@@ -1,5 +1,27 @@
 import { ImageProvider, GenerateImageRequest, GenerateImageResult, getApiModelId } from './types'
 
+// Helper function to convert image to PNG format for API compatibility
+// KIE.ai Seedream API does not support webp format
+async function convertToPngDataUrl(base64Data: string, mimeType: string): Promise<string> {
+  // If already png or jpg, return as-is
+  if (mimeType === 'image/png' || mimeType === 'image/jpeg' || mimeType === 'image/jpg') {
+    return `data:${mimeType};base64,${base64Data}`
+  }
+
+  // For webp and other formats, convert to PNG using sharp
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const sharp = require('sharp')
+    const inputBuffer = Buffer.from(base64Data, 'base64')
+    const pngBuffer = await sharp(inputBuffer).png().toBuffer()
+    return `data:image/png;base64,${pngBuffer.toString('base64')}`
+  } catch (e) {
+    // If conversion fails, try sending with png mime type anyway
+    console.warn('[Seedream] Could not convert image, trying with original data and png mime type')
+    return `data:image/png;base64,${base64Data}`
+  }
+}
+
 function buildPricingSection(request: GenerateImageRequest): string {
   const { creativeControls } = request
   const currencySymbol = creativeControls?.currencySymbol || '$'
@@ -119,11 +141,13 @@ export const seedreamProvider: ImageProvider = {
         if (hasReferenceImages) {
           const imageUrls: string[] = []
           if (request.templateBase64 && request.templateMimeType) {
-            imageUrls.push(`data:${request.templateMimeType};base64,${request.templateBase64}`)
+            const convertedUrl = await convertToPngDataUrl(request.templateBase64, request.templateMimeType)
+            imageUrls.push(convertedUrl)
           }
           if (request.productImagesBase64) {
             for (const img of request.productImagesBase64) {
-              imageUrls.push(`data:${img.mimeType};base64,${img.data}`)
+              const convertedUrl = await convertToPngDataUrl(img.data, img.mimeType)
+              imageUrls.push(convertedUrl)
             }
           }
           if (imageUrls.length > 0) {
@@ -175,11 +199,13 @@ export const seedreamProvider: ImageProvider = {
         if (hasReferenceImages) {
           const imageUrls: string[] = []
           if (request.templateBase64 && request.templateMimeType) {
-            imageUrls.push(`data:${request.templateMimeType};base64,${request.templateBase64}`)
+            const convertedUrl = await convertToPngDataUrl(request.templateBase64, request.templateMimeType)
+            imageUrls.push(convertedUrl)
           }
           if (request.productImagesBase64) {
             for (const img of request.productImagesBase64) {
-              imageUrls.push(`data:${img.mimeType};base64,${img.data}`)
+              const convertedUrl = await convertToPngDataUrl(img.data, img.mimeType)
+              imageUrls.push(convertedUrl)
             }
           }
           if (imageUrls.length > 0) {
