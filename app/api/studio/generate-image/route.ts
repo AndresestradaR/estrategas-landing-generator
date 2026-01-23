@@ -11,13 +11,6 @@ import {
   type ImageModelId,
 } from '@/lib/image-providers'
 
-function parseDataUrl(dataUrl: string): { data: string; mimeType: string } | null {
-  if (!dataUrl.startsWith('data:')) return null
-  const [header, data] = dataUrl.split(',')
-  const mimeType = header.split(':')[1]?.split(';')[0] || 'image/jpeg'
-  return { data, mimeType }
-}
-
 export async function POST(request: Request) {
   try {
     const supabase = await createClient()
@@ -120,22 +113,19 @@ export async function POST(request: Request) {
       }
     }
 
-    // Build generation request - EXACTLY like generate-landing
-    // The key difference: we pass the user's prompt via additionalInstructions
-    // so buildPrompt() includes it, keeping the same flow that works
+    // Build generation request
+    // KEY FIX: Pass the user's prompt DIRECTLY in the prompt field
+    // This way gemini.ts will use it directly instead of buildPrompt()
     const generateRequest: GenerateImageRequest = {
       provider: selectedProvider,
       modelId: modelId,
-      prompt: '', // Empty so providers use buildPrompt()
+      prompt: prompt, // DIRECT prompt from user (this is the fix!)
       productImagesBase64: productImagesBase64.length > 0 ? productImagesBase64 : undefined,
       aspectRatio: aspectRatio as '9:16' | '1:1' | '16:9',
-      productName: 'Imagen generada', // Generic name for studio
-      creativeControls: {
-        additionalInstructions: prompt, // User's prompt goes here
-      },
     }
 
     console.log(`[Studio] Generating image with ${selectedProvider}, model: ${modelId}`)
+    console.log(`[Studio] Prompt: ${prompt.substring(0, 100)}...`)
 
     // Generate image - EXACTLY like generate-landing
     let result = await generateImage(generateRequest, apiKeys)
@@ -153,6 +143,7 @@ export async function POST(request: Request) {
     }
 
     if (!result.success || !result.imageBase64) {
+      console.error(`[Studio] Generation failed:`, result.error)
       return NextResponse.json({
         success: false,
         error: result.error || 'No se pudo generar la imagen',
