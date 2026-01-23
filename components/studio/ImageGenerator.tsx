@@ -125,6 +125,11 @@ export function ImageGenerator() {
         throw new Error(data.error || 'Error generando imagen')
       }
 
+      // Check for API-level errors (success: false with status 200)
+      if (data.success === false) {
+        throw new Error(data.error || 'Error generando imagen')
+      }
+
       if (data.success && data.imageBase64) {
         const newImage: GeneratedImage = {
           id: crypto.randomUUID(),
