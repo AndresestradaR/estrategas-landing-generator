@@ -4,10 +4,19 @@ import { decrypt } from '@/lib/services/encryption'
 import {
   generateImage,
   pollForResult,
+  ImageProviderType,
+  GenerateImageRequest,
   IMAGE_MODELS,
   modelIdToProviderType,
   type ImageModelId,
 } from '@/lib/image-providers'
+
+function parseDataUrl(dataUrl: string): { data: string; mimeType: string } | null {
+  if (!dataUrl.startsWith('data:')) return null
+  const [header, data] = dataUrl.split(',')
+  const mimeType = header.split(':')[1]?.split(';')[0] || 'image/jpeg'
+  return { data, mimeType }
+}
 
 export async function POST(request: Request) {
   try {
@@ -24,14 +33,12 @@ export async function POST(request: Request) {
       prompt,
       aspectRatio = '1:1',
       quality = '1k',
-      quantity = 1,
       referenceImages,
     } = body as {
       modelId: ImageModelId
       prompt: string
       aspectRatio?: string
       quality?: string
-      quantity?: number
       referenceImages?: { data: string; mimeType: string }[]
     }
 
@@ -51,120 +58,119 @@ export async function POST(request: Request) {
       )
     }
 
-    // Get user's API keys
-    const { data: profile, error: profileError } = await supabase
+    // Get API keys from profile - EXACTLY like generate-landing
+    const { data: profile } = await supabase
       .from('profiles')
       .select('google_api_key, openai_api_key, kie_api_key, bfl_api_key')
       .eq('id', user.id)
       .single()
 
-    if (profileError || !profile) {
-      return NextResponse.json(
-        { error: 'Perfil no encontrado' },
-        { status: 404 }
-      )
+    // Build API keys object - EXACTLY like generate-landing
+    const apiKeys: {
+      gemini?: string
+      openai?: string
+      kie?: string
+      bfl?: string
+    } = {}
+
+    if (profile?.google_api_key) {
+      apiKeys.gemini = decrypt(profile.google_api_key)
+    }
+    if (profile?.openai_api_key) {
+      apiKeys.openai = decrypt(profile.openai_api_key)
+    }
+    if (profile?.kie_api_key) {
+      apiKeys.kie = decrypt(profile.kie_api_key)
+    }
+    if (profile?.bfl_api_key) {
+      apiKeys.bfl = decrypt(profile.bfl_api_key)
     }
 
-    // Get the appropriate API key for this model
-    const provider = modelIdToProviderType(modelId)
-    let apiKey: string | null = null
+    // Get provider from model
+    const selectedProvider = modelIdToProviderType(modelId)
 
-    switch (modelConfig.company) {
-      case 'google':
-        apiKey = profile.google_api_key
-        break
-      case 'openai':
-        apiKey = profile.openai_api_key
-        break
-      case 'bytedance':
-        apiKey = profile.kie_api_key
-        break
-      case 'bfl':
-        apiKey = profile.bfl_api_key
-        break
+    // Validate we have the required API key - EXACTLY like generate-landing
+    const providerKeyMap: Record<ImageProviderType, keyof typeof apiKeys> = {
+      gemini: 'gemini',
+      openai: 'openai',
+      seedream: 'kie',
+      flux: 'bfl',
     }
 
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: `No tienes configurada la API key para ${modelConfig.companyName}. Ve a Settings para agregarla.` },
-        { status: 400 }
-      )
+    const requiredKey = providerKeyMap[selectedProvider]
+    if (!apiKeys[requiredKey]) {
+      const keyNames: Record<ImageProviderType, string> = {
+        gemini: 'Google (Gemini)',
+        openai: 'OpenAI',
+        seedream: 'KIE.ai',
+        flux: 'Black Forest Labs',
+      }
+      return NextResponse.json({
+        error: `Configura tu API key de ${keyNames[selectedProvider]} en Settings`,
+      }, { status: 400 })
     }
 
-    // Decrypt the API key
-    let decryptedKey: string
-    try {
-      decryptedKey = decrypt(apiKey)
-    } catch {
-      return NextResponse.json(
-        { error: 'Error al desencriptar API key' },
-        { status: 500 }
-      )
+    // Parse reference images if provided
+    const productImagesBase64: { data: string; mimeType: string }[] = []
+    if (referenceImages && referenceImages.length > 0) {
+      for (const img of referenceImages) {
+        if (img.data && img.mimeType) {
+          productImagesBase64.push(img)
+        }
+      }
     }
 
-    // Build the generation request
-    const generationRequest = {
-      provider,
-      modelId,
-      prompt,
+    // Build generation request - EXACTLY like generate-landing
+    // The key difference: we pass the user's prompt via additionalInstructions
+    // so buildPrompt() includes it, keeping the same flow that works
+    const generateRequest: GenerateImageRequest = {
+      provider: selectedProvider,
+      modelId: modelId,
+      prompt: '', // Empty so providers use buildPrompt()
+      productImagesBase64: productImagesBase64.length > 0 ? productImagesBase64 : undefined,
       aspectRatio: aspectRatio as '9:16' | '1:1' | '16:9',
-      quality: quality === '2k' ? 'hd' : 'standard' as 'standard' | 'hd',
-      productImagesBase64: referenceImages,
+      productName: 'Imagen generada', // Generic name for studio
+      creativeControls: {
+        additionalInstructions: prompt, // User's prompt goes here
+      },
     }
 
-    // Prepare API keys object
-    const apiKeys = {
-      gemini: modelConfig.company === 'google' ? decryptedKey : undefined,
-      openai: modelConfig.company === 'openai' ? decryptedKey : undefined,
-      kie: modelConfig.company === 'bytedance' ? decryptedKey : undefined,
-      bfl: modelConfig.company === 'bfl' ? decryptedKey : undefined,
-    }
+    console.log(`[Studio] Generating image with ${selectedProvider}, model: ${modelId}`)
 
-    // Generate the image
-    const result = await generateImage(generationRequest, apiKeys)
+    // Generate image - EXACTLY like generate-landing
+    let result = await generateImage(generateRequest, apiKeys)
 
-    if (!result.success) {
-      return NextResponse.json(
-        { error: result.error || 'Error generando imagen' },
-        { status: 500 }
-      )
-    }
+    // For async providers, poll for result - EXACTLY like generate-landing
+    if (result.success && result.status === 'processing' && result.taskId) {
+      console.log(`[Studio] Task created: ${result.taskId}, polling for result...`)
 
-    // If it's an async provider that requires polling
-    if (result.taskId && modelConfig.requiresPolling) {
-      // Poll for the result
-      const pollResult = await pollForResult(provider, result.taskId, decryptedKey, {
-        maxAttempts: 60,
-        intervalMs: 2000,
+      const apiKey = apiKeys[requiredKey]!
+      result = await pollForResult(selectedProvider, result.taskId, apiKey, {
+        maxAttempts: 120,
+        intervalMs: 1000,
         timeoutMs: 120000,
       })
-
-      if (!pollResult.success) {
-        return NextResponse.json(
-          { error: pollResult.error || 'Error obteniendo resultado' },
-          { status: 500 }
-        )
-      }
-
-      return NextResponse.json({
-        success: true,
-        imageBase64: pollResult.imageBase64,
-        mimeType: pollResult.mimeType || 'image/png',
-      })
     }
 
-    // Sync provider - return result directly
+    if (!result.success || !result.imageBase64) {
+      return NextResponse.json({
+        success: false,
+        error: result.error || 'No se pudo generar la imagen',
+        provider: selectedProvider,
+      }, { status: 200 })
+    }
+
+    console.log(`[Studio] Image generated successfully with ${selectedProvider}`)
+
     return NextResponse.json({
       success: true,
       imageBase64: result.imageBase64,
       mimeType: result.mimeType || 'image/png',
+      provider: selectedProvider,
     })
 
-  } catch (error) {
-    console.error('Studio generate-image error:', error)
-    return NextResponse.json(
-      { error: 'Error interno del servidor' },
-      { status: 500 }
-    )
+  } catch (error: any) {
+    console.error('[Studio] Generate error:', error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
