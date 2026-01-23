@@ -5,17 +5,18 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils/cn'
-import { 
-  Sparkles, 
-  LayoutDashboard, 
+import {
+  Sparkles,
+  LayoutDashboard,
   ImageIcon,
   LayoutTemplate,
-  Images, 
-  Settings, 
+  Images,
+  Settings,
   LogOut,
   Menu,
   Clock,
-  Target
+  Target,
+  Wand2
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -28,6 +29,7 @@ const mainNavigation = [
 const creatorNavigation = [
   { name: 'Crea tu Banner', href: '/dashboard/banner', icon: ImageIcon, soon: true },
   { name: 'Crea tu Landing', href: '/dashboard/landing', icon: LayoutTemplate },
+  { name: 'Estudio IA', href: '/dashboard/studio', icon: Wand2 },
   { name: 'Encuentra tu Producto Ganador', href: '/dashboard/product-research', icon: Target, soon: true },
 ]
 

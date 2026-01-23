@@ -101,18 +101,54 @@ function getOpenAISize(aspectRatio: string): string {
   return sizeMap[aspectRatio] || '1024x1024'
 }
 
+// Check if model is a GPT Image model (different API parameters)
+function isGptImageModel(modelId: string): boolean {
+  return modelId.startsWith('gpt-image')
+}
+
 export const openaiProvider: ImageProvider = {
   id: 'openai',
 
   async generate(request: GenerateImageRequest, apiKey: string): Promise<GenerateImageResult> {
     try {
-      const prompt = buildPrompt(request)
+      // Use direct prompt if provided (Studio IA), otherwise build landing prompt
+      const prompt = request.prompt && request.prompt.trim()
+        ? request.prompt
+        : buildPrompt(request)
 
       // Get the API model ID from the selected model (default to gpt-image-1.5)
       const apiModelId = request.modelId ? getApiModelId(request.modelId) : 'gpt-image-1.5'
 
       // Get size based on aspect ratio
       const size = getOpenAISize(request.aspectRatio || '1:1')
+
+      // Build request body based on model type
+      // GPT Image models use different parameters than DALL-E
+      const isGptImage = isGptImageModel(apiModelId)
+
+      const requestBody: Record<string, unknown> = {
+        model: apiModelId,
+        prompt: prompt,
+        n: 1,
+        size: size,
+      }
+
+      if (isGptImage) {
+        // GPT Image models (gpt-image-1, gpt-image-1.5, gpt-image-1-mini)
+        // - Don't support response_format (always return base64)
+        // - Use output_format instead (png, jpeg, webp)
+        // - Use quality: low, medium, high
+        requestBody.output_format = 'png'
+        requestBody.quality = request.quality === '4k' || request.quality === 'hd' ? 'high' : 'medium'
+      } else {
+        // DALL-E models (dall-e-2, dall-e-3)
+        // - Use response_format: url or b64_json
+        // - Use quality: standard or hd (dall-e-3 only)
+        requestBody.response_format = 'b64_json'
+        if (apiModelId === 'dall-e-3') {
+          requestBody.quality = request.quality === '4k' || request.quality === 'hd' ? 'hd' : 'standard'
+        }
+      }
 
       // Use OpenAI Images API
       const response = await fetch('https://api.openai.com/v1/images/generations', {
@@ -121,14 +157,7 @@ export const openaiProvider: ImageProvider = {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${apiKey}`,
         },
-        body: JSON.stringify({
-          model: apiModelId,
-          prompt: prompt,
-          n: 1,
-          size: size,
-          response_format: 'b64_json',
-          quality: request.quality === '4k' || request.quality === 'hd' ? 'hd' : 'standard',
-        }),
+        body: JSON.stringify(requestBody),
       })
 
       if (!response.ok) {
@@ -140,6 +169,8 @@ export const openaiProvider: ImageProvider = {
 
       const data = await response.json()
 
+      // GPT Image models return base64 directly in data[0].b64_json
+      // DALL-E with response_format=b64_json also returns in data[0].b64_json
       if (data.data && data.data[0]?.b64_json) {
         return {
           success: true,

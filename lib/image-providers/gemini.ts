@@ -113,7 +113,7 @@ async function generateWithGemini(
 
   const parts: any[] = []
 
-  // Add template first as reference
+  // Add template first as reference (for landing generator)
   if (request.templateBase64 && request.templateMimeType) {
     parts.push({
       inline_data: {
@@ -123,7 +123,7 @@ async function generateWithGemini(
     })
   }
 
-  // Add product photos
+  // Add reference/product images
   if (request.productImagesBase64) {
     for (const photo of request.productImagesBase64) {
       parts.push({
@@ -135,8 +135,10 @@ async function generateWithGemini(
     }
   }
 
-  // Build and add prompt
-  const prompt = buildPrompt(request)
+  // Use direct prompt if provided (Studio IA), otherwise build landing prompt
+  const prompt = request.prompt && request.prompt.trim()
+    ? request.prompt
+    : buildPrompt(request)
   parts.push({ text: prompt })
 
   const response = await fetch(`${endpoint}?key=${apiKey}`, {
@@ -189,7 +191,10 @@ async function generateWithImagen(
 ): Promise<GenerateImageResult> {
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${apiModelId}:predict`
 
-  const prompt = buildPrompt(request)
+  // Use direct prompt if provided (Studio IA), otherwise build landing prompt
+  const prompt = request.prompt && request.prompt.trim()
+    ? request.prompt
+    : buildPrompt(request)
 
   // Map aspect ratio for Imagen
   const aspectRatioMap: Record<string, string> = {
@@ -266,7 +271,7 @@ export const geminiProvider: ImageProvider = {
   async generate(request: GenerateImageRequest, apiKey: string): Promise<GenerateImageResult> {
     try {
       // Get the API model ID from the selected model
-      const apiModelId = request.modelId ? getApiModelId(request.modelId) : 'gemini-2.5-flash-preview-image-generation'
+      const apiModelId = request.modelId ? getApiModelId(request.modelId) : 'gemini-2.0-flash-exp-image-generation'
 
       // Use different generation method based on model type
       if (isGeminiModel(request.modelId || 'gemini-2.5-flash')) {
