@@ -181,6 +181,7 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
 
   // ============================================
   // BLACK FOREST LABS FLUX (10 models)
+  // API docs: https://docs.bfl.ai/flux_2/flux2_overview
   // ============================================
   'flux-2-max': {
     id: 'flux-2-max',
@@ -208,7 +209,9 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     requiresPolling: true,
     pricePerImage: '~$0.02',
     tags: ['NEW', 'FAST'],
-    apiModelId: 'flux-2-klein',
+    // BFL API endpoint: /v1/flux-2-klein-4b (4B model, Apache 2.0)
+    // See: https://docs.bfl.ai/flux_2/flux2_image_editing
+    apiModelId: 'flux-2-klein-4b',
   },
   'flux-2-pro': {
     id: 'flux-2-pro',
