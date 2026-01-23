@@ -114,6 +114,7 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
 
   // ============================================
   // BYTEDANCE via KIE.ai (4 models)
+  // KIE.ai model names: https://docs.kie.ai/market/seedream/
   // ============================================
   'seedream-4.5': {
     id: 'seedream-4.5',
@@ -128,7 +129,8 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     pricePerImage: '~$0.032',
     recommended: true,
     tags: ['RECOMENDADO', 'TRENDING'],
-    apiModelId: 'bytedance/seedream-4.5',
+    // KIE.ai uses: seedream/4.5-text-to-image or seedream/4.5-edit
+    apiModelId: 'seedream/4.5-text-to-image',
   },
   'seedream-4': {
     id: 'seedream-4',
@@ -142,7 +144,8 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     requiresPolling: true,
     pricePerImage: '~$0.03',
     tags: [],
-    apiModelId: 'bytedance/seedream-4',
+    // KIE.ai uses: bytedance/seedream-v4-text-to-image or bytedance/seedream-v4-edit
+    apiModelId: 'bytedance/seedream-v4-text-to-image',
   },
   'seedream-4-4k': {
     id: 'seedream-4-4k',
@@ -156,7 +159,8 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     requiresPolling: true,
     pricePerImage: '~$0.04',
     tags: ['4K'],
-    apiModelId: 'bytedance/seedream-4-4k',
+    // Same as seedream-4 but with 4K resolution
+    apiModelId: 'bytedance/seedream-v4-text-to-image',
   },
   'seedream-3': {
     id: 'seedream-3',
@@ -170,7 +174,8 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     requiresPolling: true,
     pricePerImage: '~$0.02',
     tags: [],
-    apiModelId: 'bytedance/seedream-3',
+    // KIE.ai uses: bytedance/seedream-3.0
+    apiModelId: 'bytedance/seedream-3.0',
   },
 
   // ============================================
@@ -525,17 +530,10 @@ export function aspectRatioToDimensions(ratio: string): { width: number; height:
 export function mapAspectRatioForProvider(ratio: string, provider: ImageProviderType): string {
   // Most providers use the same format
   if (provider === 'seedream') {
-    // Seedream uses image_size enum
-    const sizeMap: Record<string, string> = {
-      '1:1': 'square_hd',
-      '4:3': 'landscape_4_3',
-      '3:4': 'portrait_4_3',
-      '16:9': 'landscape_16_9',
-      '9:16': 'portrait_16_9',
-      '3:2': 'landscape_3_2',
-      '2:3': 'portrait_3_2',
-    }
-    return sizeMap[ratio] || 'square_hd'
+    // Seedream 4.5 uses direct aspect_ratio like "1:1", "9:16", etc.
+    // Seedream 4.0 uses image_size enum
+    // We'll return the direct ratio and let the provider handle it
+    return ratio
   }
   return ratio
 }
