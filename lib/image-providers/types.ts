@@ -75,7 +75,7 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     pricePerImage: '~$0.04',
     recommended: true,
     tags: ['RECOMENDADO', 'BEST_TEXT', 'PREMIUM', 'NEW'],
-    apiModelId: 'gemini-3-pro-image-preview',
+    apiModelId: 'gemini-2.0-flash-exp',
   },
   'gemini-2.5-flash': {
     id: 'gemini-2.5-flash',
@@ -90,7 +90,7 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     pricePerImage: 'Gratis',
     recommended: false,
     tags: ['FAST'],
-    apiModelId: 'gemini-2.0-flash-exp-image-generation',
+    apiModelId: 'gemini-2.0-flash-exp',
   },
 
   // ============================================
