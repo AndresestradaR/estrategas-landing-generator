@@ -1,7 +1,7 @@
 import { ImageProvider, GenerateImageRequest, GenerateImageResult, getApiModelId } from './types'
 
-// Helper function to convert image to PNG format for API compatibility
-// KIE.ai Seedream API does not support webp format
+// Helper function to convert image to PNG data URL for API compatibility
+// Only used when we don't have a public URL
 async function convertToPngDataUrl(base64Data: string, mimeType: string): Promise<string> {
   // If already png or jpg, return as-is
   if (mimeType === 'image/png' || mimeType === 'image/jpeg' || mimeType === 'image/jpg') {
@@ -17,47 +17,9 @@ async function convertToPngDataUrl(base64Data: string, mimeType: string): Promis
     console.log('[Seedream] Successfully converted image to PNG')
     return `data:image/png;base64,${pngBuffer.toString('base64')}`
   } catch (e: any) {
-    // If conversion fails, try sending with png mime type anyway
     console.warn('[Seedream] Could not convert image:', e.message)
     return `data:image/png;base64,${base64Data}`
   }
-}
-
-// Helper to download URL and convert to PNG data URL if needed
-async function urlToPngDataUrl(url: string): Promise<string> {
-  console.log('[Seedream] Downloading image from URL:', url)
-  
-  const response = await fetch(url)
-  if (!response.ok) {
-    throw new Error(`Failed to download image: ${response.status}`)
-  }
-  
-  const contentType = response.headers.get('content-type') || 'image/jpeg'
-  const buffer = await response.arrayBuffer()
-  const base64 = Buffer.from(buffer).toString('base64')
-  
-  console.log('[Seedream] Downloaded image, content-type:', contentType, 'size:', buffer.byteLength)
-  
-  // Check if it's webp (by content-type or URL extension)
-  const isWebp = contentType.includes('webp') || url.toLowerCase().includes('.webp')
-  
-  if (isWebp) {
-    console.log('[Seedream] Image is webp, converting to PNG...')
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const sharp = require('sharp')
-      const inputBuffer = Buffer.from(buffer)
-      const pngBuffer = await sharp(inputBuffer).png().toBuffer()
-      console.log('[Seedream] Successfully converted webp to PNG, new size:', pngBuffer.length)
-      return `data:image/png;base64,${pngBuffer.toString('base64')}`
-    } catch (e: any) {
-      console.error('[Seedream] Failed to convert webp:', e.message)
-      throw new Error(`Cannot convert webp image: ${e.message}. Please use PNG or JPG templates.`)
-    }
-  }
-  
-  // Not webp, return as-is
-  return `data:${contentType};base64,${base64}`
 }
 
 function buildPricingSection(request: GenerateImageRequest): string {
@@ -157,7 +119,6 @@ export const seedreamProvider: ImageProvider = {
       console.log('[Seedream] Creating task with model:', apiModelId)
       console.log('[Seedream] Has reference images:', hasReferenceImages)
       console.log('[Seedream] Template URL:', request.templateUrl || 'N/A')
-      console.log('[Seedream] Template mime type:', request.templateMimeType || 'N/A')
 
       // Determine model version based on model ID
       const is45 = apiModelId.startsWith('seedream/')
@@ -176,30 +137,36 @@ export const seedreamProvider: ImageProvider = {
           quality: is4K ? 'high' : 'basic',
         }
         // Add image_urls for edit mode
+        // IMPORTANT: KIE.ai requires PUBLIC URLs, not data URLs!
+        // KIE.ai supports webp via URL, so we can use Supabase URLs directly
         if (hasReferenceImages) {
           const imageUrls: string[] = []
 
-          // Template image - ALWAYS convert to PNG data URL to avoid webp issues
-          if (request.templateUrl) {
-            // Download and convert URL to PNG data URL
-            const pngDataUrl = await urlToPngDataUrl(request.templateUrl)
-            imageUrls.push(pngDataUrl)
+          // Template: prefer public URL (KIE.ai accepts webp via URL)
+          if (request.templateUrl && request.templateUrl.startsWith('http')) {
+            console.log('[Seedream] Using public template URL directly:', request.templateUrl)
+            imageUrls.push(request.templateUrl)
           } else if (request.templateBase64 && request.templateMimeType) {
-            const convertedUrl = await convertToPngDataUrl(request.templateBase64, request.templateMimeType)
-            imageUrls.push(convertedUrl)
+            // Fallback to data URL only if no public URL available
+            // Note: This may not work well with KIE.ai which prefers URLs
+            console.log('[Seedream] No public URL, using base64 data URL')
+            const dataUrl = await convertToPngDataUrl(request.templateBase64, request.templateMimeType)
+            imageUrls.push(dataUrl)
           }
 
-          // Product images (usually jpg/png from user uploads)
+          // Product images - these are user uploads, likely already jpg/png
+          // KIE.ai prefers URLs, but we only have base64 for user uploads
           if (request.productImagesBase64) {
             for (const img of request.productImagesBase64) {
-              const convertedUrl = await convertToPngDataUrl(img.data, img.mimeType)
-              imageUrls.push(convertedUrl)
+              const dataUrl = await convertToPngDataUrl(img.data, img.mimeType)
+              imageUrls.push(dataUrl)
             }
           }
 
           if (imageUrls.length > 0) {
             input.image_urls = imageUrls
-            console.log('[Seedream] Sending', imageUrls.length, 'images to API')
+            console.log('[Seedream] Sending', imageUrls.length, 'images')
+            console.log('[Seedream] First image type:', imageUrls[0].substring(0, 50))
           }
         }
       } else if (is30) {
@@ -245,27 +212,27 @@ export const seedreamProvider: ImageProvider = {
         if (hasReferenceImages) {
           const imageUrls: string[] = []
 
-          // Template image - ALWAYS convert to PNG data URL to avoid webp issues
-          if (request.templateUrl) {
-            // Download and convert URL to PNG data URL
-            const pngDataUrl = await urlToPngDataUrl(request.templateUrl)
-            imageUrls.push(pngDataUrl)
+          // Template: prefer public URL
+          if (request.templateUrl && request.templateUrl.startsWith('http')) {
+            console.log('[Seedream] Using public template URL directly:', request.templateUrl)
+            imageUrls.push(request.templateUrl)
           } else if (request.templateBase64 && request.templateMimeType) {
-            const convertedUrl = await convertToPngDataUrl(request.templateBase64, request.templateMimeType)
-            imageUrls.push(convertedUrl)
+            console.log('[Seedream] No public URL, using base64 data URL')
+            const dataUrl = await convertToPngDataUrl(request.templateBase64, request.templateMimeType)
+            imageUrls.push(dataUrl)
           }
 
-          // Product images (usually jpg/png from user uploads)
+          // Product images
           if (request.productImagesBase64) {
             for (const img of request.productImagesBase64) {
-              const convertedUrl = await convertToPngDataUrl(img.data, img.mimeType)
-              imageUrls.push(convertedUrl)
+              const dataUrl = await convertToPngDataUrl(img.data, img.mimeType)
+              imageUrls.push(dataUrl)
             }
           }
 
           if (imageUrls.length > 0) {
             input.image_urls = imageUrls
-            console.log('[Seedream] Sending', imageUrls.length, 'images to API')
+            console.log('[Seedream] Sending', imageUrls.length, 'images')
           }
         }
       }
@@ -300,7 +267,6 @@ export const seedreamProvider: ImageProvider = {
       }
 
       if (!createResponse.ok) {
-        // Extract error message from response
         const errorMsg = createData.message || createData.msg || createData.error || createData.detail || JSON.stringify(createData)
         throw new Error(`Seedream API error (${createResponse.status}): ${errorMsg}`)
       }
@@ -313,14 +279,12 @@ export const seedreamProvider: ImageProvider = {
       const taskId = createData.data?.taskId || createData.taskId || createData.data?.task_id
 
       if (!taskId) {
-        // Log the full response to understand the structure
         console.error('[Seedream] No taskId in response:', JSON.stringify(createData, null, 2))
         throw new Error(`No taskId in Seedream response. Got: ${JSON.stringify(createData).substring(0, 300)}`)
       }
 
       console.log('[Seedream] Task created:', taskId)
 
-      // Return pending status - caller must poll for result
       return {
         success: true,
         provider: 'seedream',
@@ -339,7 +303,6 @@ export const seedreamProvider: ImageProvider = {
 
   async checkStatus(taskId: string, apiKey: string): Promise<GenerateImageResult> {
     try {
-      // Use the correct endpoint for KIE.ai
       const response = await fetch(`https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${taskId}`, {
         method: 'GET',
         headers: {
@@ -355,8 +318,6 @@ export const seedreamProvider: ImageProvider = {
       console.log('[Seedream] Status response:', JSON.stringify(data, null, 2))
 
       const taskData = data.data || data
-
-      // KIE.ai states: waiting, queuing, generating, success, fail
       const state = taskData.state
 
       if (state === 'waiting' || state === 'queuing' || state === 'generating') {
@@ -376,11 +337,9 @@ export const seedreamProvider: ImageProvider = {
         }
       }
 
-      // Success - get the image
       if (state === 'success') {
         let resultUrls: string[] = []
         
-        // Parse resultJson if it exists
         if (taskData.resultJson) {
           try {
             const resultData = typeof taskData.resultJson === 'string' 
@@ -394,8 +353,6 @@ export const seedreamProvider: ImageProvider = {
         
         if (resultUrls.length > 0) {
           const imageUrl = resultUrls[0]
-
-          // Fetch the image and convert to base64
           const imageResponse = await fetch(imageUrl)
           const imageBuffer = await imageResponse.arrayBuffer()
           const imageBase64 = Buffer.from(imageBuffer).toString('base64')
