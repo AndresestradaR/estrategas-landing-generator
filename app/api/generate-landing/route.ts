@@ -120,6 +120,9 @@ export async function POST(request: Request) {
       }, { status: 400 })
     }
 
+    // Check if templateUrl is a public URL or a data URL
+    const isPublicUrl = templateUrl.startsWith('http://') || templateUrl.startsWith('https://')
+
     // Parse template
     let templateBase64: string
     let templateMimeType: string
@@ -153,10 +156,13 @@ export async function POST(request: Request) {
     const aspectRatio = getAspectRatio(outputSize)
 
     // Build generation request with pricing data
+    // Pass templateUrl only if it's a public URL (not a data URL)
     const generateRequest: GenerateImageRequest = {
       provider: selectedProvider,
       modelId: modelId, // Pass the specific model ID
       prompt: '', // Will be built by provider
+      // Pass public URL for providers that support it (like KIE.ai Seedream)
+      templateUrl: isPublicUrl ? templateUrl : undefined,
       templateBase64,
       templateMimeType,
       productImagesBase64,
@@ -177,6 +183,7 @@ export async function POST(request: Request) {
 
     console.log(`Generating image with ${selectedProvider} for product:`, productName)
     console.log('Aspect ratio:', aspectRatio)
+    console.log('Template URL (public):', isPublicUrl ? templateUrl : 'N/A (user upload)')
 
     // Generate image
     let result = await generateImage(generateRequest, apiKeys)
