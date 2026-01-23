@@ -23,6 +23,47 @@ function parseDataUrl(dataUrl: string): { data: string; mimeType: string } | nul
   return { data, mimeType }
 }
 
+// Upload base64 image to Supabase Storage and return public URL
+async function uploadToStorage(
+  supabase: any,
+  base64Data: string,
+  mimeType: string,
+  userId: string,
+  index: number
+): Promise<string | null> {
+  try {
+    const ext = mimeType.split('/')[1] || 'png'
+    const fileName = `temp/${userId}/${Date.now()}-${index}.${ext}`
+    
+    // Convert base64 to buffer
+    const buffer = Buffer.from(base64Data, 'base64')
+    
+    // Upload to storage
+    const { data, error } = await supabase.storage
+      .from('product-images')
+      .upload(fileName, buffer, {
+        contentType: mimeType,
+        upsert: true,
+      })
+    
+    if (error) {
+      console.error('Storage upload error:', error)
+      return null
+    }
+    
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from('product-images')
+      .getPublicUrl(fileName)
+    
+    console.log('Uploaded product image to:', urlData.publicUrl)
+    return urlData.publicUrl
+  } catch (e: any) {
+    console.error('Upload error:', e.message)
+    return null
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const supabase = await createClient()
@@ -141,10 +182,45 @@ export async function POST(request: Request) {
 
     // Parse product photos
     const productImagesBase64: { data: string; mimeType: string }[] = []
-    for (const photoUrl of productPhotos) {
+    const productImageUrls: string[] = [] // For providers that need URLs (like KIE.ai)
+    
+    const serviceClient = await createServiceClient()
+    
+    for (let i = 0; i < productPhotos.length; i++) {
+      const photoUrl = productPhotos[i]
       if (photoUrl?.startsWith('data:')) {
         const parsed = parseDataUrl(photoUrl)
-        if (parsed) productImagesBase64.push(parsed)
+        if (parsed) {
+          productImagesBase64.push(parsed)
+          
+          // For Seedream/KIE.ai: upload to storage to get public URL
+          // KIE.ai requires public URLs, not data URLs
+          if (selectedProvider === 'seedream') {
+            const publicUrl = await uploadToStorage(
+              serviceClient,
+              parsed.data,
+              parsed.mimeType,
+              user.id,
+              i
+            )
+            if (publicUrl) {
+              productImageUrls.push(publicUrl)
+            }
+          }
+        }
+      } else if (photoUrl?.startsWith('http')) {
+        // Already a public URL
+        productImageUrls.push(photoUrl)
+        // Also fetch and convert to base64 for other providers
+        try {
+          const response = await fetch(photoUrl)
+          const buffer = await response.arrayBuffer()
+          const base64 = Buffer.from(buffer).toString('base64')
+          const mimeType = response.headers.get('content-type') || 'image/jpeg'
+          productImagesBase64.push({ data: base64, mimeType })
+        } catch (e) {
+          console.error('Failed to fetch product image:', e)
+        }
       }
     }
 
@@ -156,27 +232,26 @@ export async function POST(request: Request) {
     const aspectRatio = getAspectRatio(outputSize)
 
     // Build generation request with pricing data
-    // Pass templateUrl only if it's a public URL (not a data URL)
     const generateRequest: GenerateImageRequest = {
       provider: selectedProvider,
-      modelId: modelId, // Pass the specific model ID
-      prompt: '', // Will be built by provider
+      modelId: modelId,
+      prompt: '',
       // Pass public URL for providers that support it (like KIE.ai Seedream)
       templateUrl: isPublicUrl ? templateUrl : undefined,
       templateBase64,
       templateMimeType,
       productImagesBase64,
+      // Pass product image URLs for KIE.ai (they require public URLs)
+      productImageUrls: productImageUrls.length > 0 ? productImageUrls : undefined,
       aspectRatio,
       productName,
       creativeControls: {
         ...creativeControls,
-        // Include pricing from separate fields
         currencySymbol: currencySymbol || '$',
         priceAfter,
         priceBefore,
         priceCombo2,
         priceCombo3,
-        // Include country
         targetCountry,
       },
     }
@@ -184,6 +259,7 @@ export async function POST(request: Request) {
     console.log(`Generating image with ${selectedProvider} for product:`, productName)
     console.log('Aspect ratio:', aspectRatio)
     console.log('Template URL (public):', isPublicUrl ? templateUrl : 'N/A (user upload)')
+    console.log('Product image URLs:', productImageUrls.length)
 
     // Generate image
     let result = await generateImage(generateRequest, apiKeys)
@@ -194,7 +270,7 @@ export async function POST(request: Request) {
 
       const apiKey = apiKeys[requiredKey]!
       result = await pollForResult(selectedProvider, result.taskId, apiKey, {
-        maxAttempts: 120, // 2 minutes max
+        maxAttempts: 120,
         intervalMs: 1000,
         timeoutMs: 120000,
       })
@@ -214,7 +290,6 @@ export async function POST(request: Request) {
     console.log(`Banner generated successfully with ${selectedProvider}`)
 
     // Save to database
-    const serviceClient = await createServiceClient()
     const { data: insertedSection, error: insertError } = await serviceClient
       .from('landing_sections')
       .insert({
