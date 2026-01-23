@@ -81,8 +81,13 @@ export const seedreamProvider: ImageProvider = {
 
       console.log('[Seedream] Creating task with model:', apiModelId)
 
-      // Determine if using Seedream 4.5 or 4.0 based on model ID
+      // Determine model version based on model ID
+      // - Seedream 4.5: 'seedream/4.5-text-to-image' (starts with 'seedream/')
+      // - Seedream 4.0: 'bytedance/seedream-v4-text-to-image' (contains 'v4')
+      // - Seedream 3.0: 'bytedance/seedream' (exact match, no v4)
       const is45 = apiModelId.startsWith('seedream/')
+      const is40 = apiModelId.includes('seedream-v4')
+      const is30 = apiModelId === 'bytedance/seedream'
       const is4K = request.modelId === 'seedream-4-4k'
 
       // Build the input object based on model version
@@ -95,8 +100,29 @@ export const seedreamProvider: ImageProvider = {
           aspect_ratio: request.aspectRatio || '9:16',
           quality: is4K ? 'high' : 'basic',
         }
+      } else if (is30) {
+        // Seedream 3.0 uses: image_size (different params than 4.0)
+        // See: https://docs.kie.ai/market/seedream/seedream.md
+        // ONLY accepts: prompt, image_size, guidance_scale, seed, enable_safety_checker
+        const imageSizeMap: Record<string, string> = {
+          '1:1': 'square',
+          '4:3': 'landscape_4_3',
+          '3:4': 'portrait_4_3',
+          '16:9': 'landscape_16_9',
+          '9:16': 'portrait_16_9',
+          '3:2': 'square_hd',
+          '2:3': 'square_hd',
+        }
+        const imageSize = imageSizeMap[request.aspectRatio || '9:16'] || 'portrait_16_9'
+
+        input = {
+          prompt: prompt,
+          image_size: imageSize,
+          guidance_scale: 2.5,
+          enable_safety_checker: true,
+        }
       } else {
-        // Seedream 4.0 and 3.0 use: image_size and image_resolution
+        // Seedream 4.0 uses: image_size, image_resolution, max_images
         const imageSizeMap: Record<string, string> = {
           '1:1': 'square_hd',
           '4:3': 'landscape_4_3',
