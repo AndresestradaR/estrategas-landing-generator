@@ -475,7 +475,10 @@ export interface GenerateImageRequest {
   templateUrl?: string
   templateBase64?: string
   templateMimeType?: string
+  // Product images as base64 (for providers that accept it)
   productImagesBase64?: { data: string; mimeType: string }[]
+  // Product images as public URLs (for KIE.ai which requires URLs)
+  productImageUrls?: string[]
   // Aspect ratio
   aspectRatio?: '9:16' | '1:1' | '16:9' | '4:5' | '4:3' | '3:4' | '3:2' | '2:3'
   // Quality settings
