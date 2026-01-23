@@ -66,13 +66,6 @@ ${creativeControls?.additionalInstructions ? `EXTRA: ${creativeControls.addition
 Create a banner IDENTICAL to the template, with only product and prices changed.`
 }
 
-// Helper to upload image to a temporary URL (for Kie.ai which requires URLs)
-async function uploadImageToTemp(base64: string, mimeType: string): Promise<string> {
-  // In production, you'd upload to your storage (S3, Supabase, etc.)
-  // For now, we'll use a data URL approach or require pre-uploaded URLs
-  return `data:${mimeType};base64,${base64}`
-}
-
 export const seedreamProvider: ImageProvider = {
   id: 'seedream',
 
@@ -87,21 +80,12 @@ export const seedreamProvider: ImageProvider = {
       const apiModelId = request.modelId ? getApiModelId(request.modelId) : 'bytedance/seedream-4.5'
 
       // Prepare image URLs - Seedream requires URLs, not base64
+      // For now we use the template URL directly if available
       const imageUrls: string[] = []
 
-      // Add template
-      if (request.templateBase64 && request.templateMimeType) {
-        const templateUrl = await uploadImageToTemp(request.templateBase64, request.templateMimeType)
-        imageUrls.push(templateUrl)
-      }
-
-      // Add product images
-      if (request.productImagesBase64) {
-        for (const img of request.productImagesBase64) {
-          const url = await uploadImageToTemp(img.data, img.mimeType)
-          imageUrls.push(url)
-        }
-      }
+      // KIE.ai doesn't accept data URLs, only public URLs
+      // If we have templateBase64, we need to skip image_urls or use a public URL
+      // For now, we'll only use text-to-image mode
 
       // Map aspect ratio to Seedream format
       const imageSize = mapAspectRatioForProvider(request.aspectRatio || '9:16', 'seedream')
@@ -110,37 +94,59 @@ export const seedreamProvider: ImageProvider = {
       const is4K = request.modelId === 'seedream-4-4k'
       const quality = is4K ? '4K' : (request.quality === '4k' ? '4K' : request.quality === 'hd' ? '2K' : '1K')
 
+      console.log('[Seedream] Creating task with model:', apiModelId)
+      console.log('[Seedream] Image size:', imageSize)
+      console.log('[Seedream] Quality:', quality)
+
       // Create task via KIE.ai API
+      const requestBody = {
+        model: apiModelId,
+        input: {
+          prompt: prompt,
+          image_size: imageSize,
+          image_resolution: quality,
+          max_images: 1,
+        },
+      }
+
+      console.log('[Seedream] Request body:', JSON.stringify(requestBody, null, 2))
+
       const createResponse = await fetch('https://api.kie.ai/api/v1/jobs/createTask', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${apiKey}`,
         },
-        body: JSON.stringify({
-          model: apiModelId,
-          input: {
-            prompt: prompt,
-            image_urls: imageUrls,
-            aspect_ratio: request.aspectRatio || '1:1',
-            image_resolution: quality,
-          },
-        }),
+        body: JSON.stringify(requestBody),
       })
 
-      if (!createResponse.ok) {
-        const errorData = await createResponse.json().catch(() => ({}))
-        throw new Error(
-          `Seedream API error: ${createResponse.status} - ${JSON.stringify(errorData)}`
-        )
+      const responseText = await createResponse.text()
+      console.log('[Seedream] Response status:', createResponse.status)
+      console.log('[Seedream] Response body:', responseText)
+
+      let createData: any
+      try {
+        createData = JSON.parse(responseText)
+      } catch (e) {
+        throw new Error(`Seedream API returned invalid JSON: ${responseText.substring(0, 200)}`)
       }
 
-      const createData = await createResponse.json()
-      const taskId = createData.data?.taskId || createData.taskId
+      if (!createResponse.ok) {
+        // Extract error message from response
+        const errorMsg = createData.message || createData.error || createData.detail || JSON.stringify(createData)
+        throw new Error(`Seedream API error (${createResponse.status}): ${errorMsg}`)
+      }
+
+      // KIE.ai response structure: { code: 0, data: { taskId: "..." } }
+      const taskId = createData.data?.taskId || createData.taskId || createData.data?.task_id
 
       if (!taskId) {
-        throw new Error('No taskId returned from Seedream')
+        // Log the full response to understand the structure
+        console.error('[Seedream] No taskId in response:', JSON.stringify(createData, null, 2))
+        throw new Error(`No taskId in Seedream response. Got: ${JSON.stringify(createData).substring(0, 300)}`)
       }
+
+      console.log('[Seedream] Task created:', taskId)
 
       // Return pending status - caller must poll for result
       return {
@@ -150,6 +156,7 @@ export const seedreamProvider: ImageProvider = {
         status: 'processing',
       }
     } catch (error: any) {
+      console.error('[Seedream] Error:', error.message)
       return {
         success: false,
         error: error.message || 'Seedream generation failed',
@@ -160,7 +167,7 @@ export const seedreamProvider: ImageProvider = {
 
   async checkStatus(taskId: string, apiKey: string): Promise<GenerateImageResult> {
     try {
-      const response = await fetch(`https://api.kie.ai/api/task/status/${taskId}`, {
+      const response = await fetch(`https://api.kie.ai/api/v1/jobs/status/${taskId}`, {
         method: 'GET',
         headers: {
           Authorization: `Bearer ${apiKey}`,
@@ -172,10 +179,15 @@ export const seedreamProvider: ImageProvider = {
       }
 
       const data = await response.json()
-      const taskData = data.data
+      console.log('[Seedream] Status response:', JSON.stringify(data, null, 2))
+
+      const taskData = data.data || data
 
       // Check status: 0 = Generating, 1 = Success, 2 = Failed
-      if (taskData.successFlag === 0) {
+      // Also check for status field: "processing", "completed", "failed"
+      const status = taskData.status || (taskData.successFlag === 0 ? 'processing' : taskData.successFlag === 1 ? 'completed' : 'failed')
+
+      if (status === 'processing' || taskData.successFlag === 0) {
         return {
           success: true,
           provider: 'seedream',
@@ -184,17 +196,19 @@ export const seedreamProvider: ImageProvider = {
         }
       }
 
-      if (taskData.successFlag === 2) {
+      if (status === 'failed' || taskData.successFlag === 2) {
         return {
           success: false,
-          error: taskData.errorMessage || 'Generation failed',
+          error: taskData.errorMessage || taskData.error || 'Generation failed',
           provider: 'seedream',
         }
       }
 
       // Success - get the image
-      if (taskData.successFlag === 1 && taskData.response?.result_urls?.length > 0) {
-        const imageUrl = taskData.response.result_urls[0]
+      const resultUrls = taskData.response?.result_urls || taskData.output?.images || taskData.images || []
+      
+      if (resultUrls.length > 0) {
+        const imageUrl = resultUrls[0]
 
         // Fetch the image and convert to base64
         const imageResponse = await fetch(imageUrl)
@@ -213,7 +227,7 @@ export const seedreamProvider: ImageProvider = {
 
       return {
         success: false,
-        error: 'Unknown status from Seedream',
+        error: `Unknown status from Seedream: ${JSON.stringify(taskData).substring(0, 200)}`,
         provider: 'seedream',
       }
     } catch (error: any) {
