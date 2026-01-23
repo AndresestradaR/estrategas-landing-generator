@@ -24,7 +24,7 @@ function parseDataUrl(dataUrl: string): { data: string; mimeType: string } | nul
 }
 
 // Upload base64 image to Supabase Storage and return public URL
-// Uses the existing 'templates' bucket which is already public
+// Uses 'landing-images' bucket which has INSERT policy for authenticated users
 async function uploadToStorage(
   supabase: any,
   base64Data: string,
@@ -39,11 +39,11 @@ async function uploadToStorage(
     // Convert base64 to buffer
     const buffer = Buffer.from(base64Data, 'base64')
     
-    console.log(`[Storage] Uploading to templates bucket: ${fileName} (${buffer.length} bytes)`)
+    console.log(`[Storage] Uploading to landing-images bucket: ${fileName} (${buffer.length} bytes)`)
     
-    // Upload to 'templates' bucket (which already exists and is public)
+    // Upload to 'landing-images' bucket (has INSERT policy for authenticated)
     const { data, error } = await supabase.storage
-      .from('templates')
+      .from('landing-images')
       .upload(fileName, buffer, {
         contentType: mimeType,
         upsert: true,
@@ -56,7 +56,7 @@ async function uploadToStorage(
     
     // Get public URL
     const { data: urlData } = supabase.storage
-      .from('templates')
+      .from('landing-images')
       .getPublicUrl(fileName)
     
     console.log('[Storage] Upload success:', urlData.publicUrl)
@@ -193,8 +193,7 @@ export async function POST(request: Request) {
     const productImagesBase64: { data: string; mimeType: string }[] = []
     const productImageUrls: string[] = [] // For providers that need URLs
     
-    const serviceClient = await createServiceClient()
-    
+    // Use regular client for uploads (has user context for RLS)
     console.log(`[Generate] Processing ${productPhotos.length} product photos`)
     
     for (let i = 0; i < productPhotos.length; i++) {
@@ -208,10 +207,11 @@ export async function POST(request: Request) {
           console.log(`[Generate] Parsed photo ${i}: ${parsed.mimeType}, ${parsed.data.length} chars`)
           
           // Upload to storage if provider needs public URLs
+          // Use regular supabase client (with user auth) for RLS
           if (needsPublicUrls) {
             console.log(`[Generate] Uploading photo ${i} to storage...`)
             const publicUrl = await uploadToStorage(
-              serviceClient,
+              supabase,
               parsed.data,
               parsed.mimeType,
               user.id,
@@ -312,7 +312,8 @@ export async function POST(request: Request) {
     const generatedImageUrl = `data:${result.mimeType};base64,${result.imageBase64}`
     console.log(`Banner generated successfully with ${selectedProvider}`)
 
-    // Save to database
+    // Save to database (use service client for bypassing RLS)
+    const serviceClient = await createServiceClient()
     const { data: insertedSection, error: insertError } = await serviceClient
       .from('landing_sections')
       .insert({
