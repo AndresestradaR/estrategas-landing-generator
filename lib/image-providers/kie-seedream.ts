@@ -98,9 +98,10 @@ export const seedreamProvider: ImageProvider = {
         ? request.prompt
         : buildPrompt(request)
 
-      // Detect if there are reference images
+      // Detect if there are reference images (URL or base64)
       const hasReferenceImages = (request.productImagesBase64 && request.productImagesBase64.length > 0) ||
-                                  (request.templateBase64 && request.templateMimeType)
+                                  (request.templateBase64 && request.templateMimeType) ||
+                                  request.templateUrl
 
       // Get the API model ID from the selected model
       let apiModelId = request.modelId ? getApiModelId(request.modelId) : 'seedream/4.5-text-to-image'
@@ -140,16 +141,24 @@ export const seedreamProvider: ImageProvider = {
         // Add image_urls for edit mode
         if (hasReferenceImages) {
           const imageUrls: string[] = []
-          if (request.templateBase64 && request.templateMimeType) {
+
+          // Prioritize direct URL (avoids webp conversion issues on Vercel)
+          if (request.templateUrl) {
+            imageUrls.push(request.templateUrl)
+          } else if (request.templateBase64 && request.templateMimeType) {
+            // Fallback to base64 only if no URL
             const convertedUrl = await convertToPngDataUrl(request.templateBase64, request.templateMimeType)
             imageUrls.push(convertedUrl)
           }
+
+          // Product images (usually jpg/png from user uploads)
           if (request.productImagesBase64) {
             for (const img of request.productImagesBase64) {
               const convertedUrl = await convertToPngDataUrl(img.data, img.mimeType)
               imageUrls.push(convertedUrl)
             }
           }
+
           if (imageUrls.length > 0) {
             input.image_urls = imageUrls
           }
@@ -198,16 +207,24 @@ export const seedreamProvider: ImageProvider = {
         // Add image_urls for edit mode
         if (hasReferenceImages) {
           const imageUrls: string[] = []
-          if (request.templateBase64 && request.templateMimeType) {
+
+          // Prioritize direct URL (avoids webp conversion issues on Vercel)
+          if (request.templateUrl) {
+            imageUrls.push(request.templateUrl)
+          } else if (request.templateBase64 && request.templateMimeType) {
+            // Fallback to base64 only if no URL
             const convertedUrl = await convertToPngDataUrl(request.templateBase64, request.templateMimeType)
             imageUrls.push(convertedUrl)
           }
+
+          // Product images (usually jpg/png from user uploads)
           if (request.productImagesBase64) {
             for (const img of request.productImagesBase64) {
               const convertedUrl = await convertToPngDataUrl(img.data, img.mimeType)
               imageUrls.push(convertedUrl)
             }
           }
+
           if (imageUrls.length > 0) {
             input.image_urls = imageUrls
           }

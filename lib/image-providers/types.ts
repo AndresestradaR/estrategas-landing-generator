@@ -471,7 +471,8 @@ export interface GenerateImageRequest {
   // The specific model ID selected by user
   modelId: ImageModelId
   prompt: string
-  // Template and product images as base64
+  // Template as URL (preferred) or base64
+  templateUrl?: string
   templateBase64?: string
   templateMimeType?: string
   productImagesBase64?: { data: string; mimeType: string }[]
