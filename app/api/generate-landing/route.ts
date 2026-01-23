@@ -24,6 +24,7 @@ function parseDataUrl(dataUrl: string): { data: string; mimeType: string } | nul
 }
 
 // Upload base64 image to Supabase Storage and return public URL
+// Uses the existing 'templates' bucket which is already public
 async function uploadToStorage(
   supabase: any,
   base64Data: string,
@@ -33,33 +34,35 @@ async function uploadToStorage(
 ): Promise<string | null> {
   try {
     const ext = mimeType.split('/')[1] || 'png'
-    const fileName = `temp/${userId}/${Date.now()}-${index}.${ext}`
+    const fileName = `temp-products/${userId}/${Date.now()}-${index}.${ext}`
     
     // Convert base64 to buffer
     const buffer = Buffer.from(base64Data, 'base64')
     
-    // Upload to storage
+    console.log(`[Storage] Uploading to templates bucket: ${fileName} (${buffer.length} bytes)`)
+    
+    // Upload to 'templates' bucket (which already exists and is public)
     const { data, error } = await supabase.storage
-      .from('product-images')
+      .from('templates')
       .upload(fileName, buffer, {
         contentType: mimeType,
         upsert: true,
       })
     
     if (error) {
-      console.error('Storage upload error:', error)
+      console.error('[Storage] Upload error:', error.message, error)
       return null
     }
     
     // Get public URL
     const { data: urlData } = supabase.storage
-      .from('product-images')
+      .from('templates')
       .getPublicUrl(fileName)
     
-    console.log('Uploaded product image to:', urlData.publicUrl)
+    console.log('[Storage] Upload success:', urlData.publicUrl)
     return urlData.publicUrl
   } catch (e: any) {
-    console.error('Upload error:', e.message)
+    console.error('[Storage] Exception:', e.message)
     return null
   }
 }
@@ -180,22 +183,33 @@ export async function POST(request: Request) {
       templateMimeType = response.headers.get('content-type') || 'image/jpeg'
     }
 
+    // Determine if this provider needs public URLs
+    // KIE.ai (Seedream) and BFL (FLUX) require public URLs for images
+    const needsPublicUrls = selectedProvider === 'seedream' || selectedProvider === 'flux'
+    
+    console.log(`[Generate] Provider: ${selectedProvider}, needs public URLs: ${needsPublicUrls}`)
+
     // Parse product photos
     const productImagesBase64: { data: string; mimeType: string }[] = []
-    const productImageUrls: string[] = [] // For providers that need URLs (like KIE.ai)
+    const productImageUrls: string[] = [] // For providers that need URLs
     
     const serviceClient = await createServiceClient()
     
+    console.log(`[Generate] Processing ${productPhotos.length} product photos`)
+    
     for (let i = 0; i < productPhotos.length; i++) {
       const photoUrl = productPhotos[i]
+      console.log(`[Generate] Photo ${i}: ${photoUrl?.substring(0, 50)}...`)
+      
       if (photoUrl?.startsWith('data:')) {
         const parsed = parseDataUrl(photoUrl)
         if (parsed) {
           productImagesBase64.push(parsed)
+          console.log(`[Generate] Parsed photo ${i}: ${parsed.mimeType}, ${parsed.data.length} chars`)
           
-          // For Seedream/KIE.ai: upload to storage to get public URL
-          // KIE.ai requires public URLs, not data URLs
-          if (selectedProvider === 'seedream') {
+          // Upload to storage if provider needs public URLs
+          if (needsPublicUrls) {
+            console.log(`[Generate] Uploading photo ${i} to storage...`)
             const publicUrl = await uploadToStorage(
               serviceClient,
               parsed.data,
@@ -205,12 +219,16 @@ export async function POST(request: Request) {
             )
             if (publicUrl) {
               productImageUrls.push(publicUrl)
+              console.log(`[Generate] Photo ${i} uploaded: ${publicUrl}`)
+            } else {
+              console.error(`[Generate] Failed to upload photo ${i}`)
             }
           }
         }
       } else if (photoUrl?.startsWith('http')) {
         // Already a public URL
         productImageUrls.push(photoUrl)
+        console.log(`[Generate] Photo ${i} is already a URL: ${photoUrl}`)
         // Also fetch and convert to base64 for other providers
         try {
           const response = await fetch(photoUrl)
@@ -224,6 +242,8 @@ export async function POST(request: Request) {
       }
     }
 
+    console.log(`[Generate] Result: ${productImagesBase64.length} base64 images, ${productImageUrls.length} URLs`)
+
     if (productImagesBase64.length === 0) {
       return NextResponse.json({ error: 'No se pudieron procesar las fotos' }, { status: 400 })
     }
@@ -236,12 +256,12 @@ export async function POST(request: Request) {
       provider: selectedProvider,
       modelId: modelId,
       prompt: '',
-      // Pass public URL for providers that support it (like KIE.ai Seedream)
+      // Pass public URL for providers that support it
       templateUrl: isPublicUrl ? templateUrl : undefined,
       templateBase64,
       templateMimeType,
       productImagesBase64,
-      // Pass product image URLs for KIE.ai (they require public URLs)
+      // Pass product image URLs for providers that need them
       productImageUrls: productImageUrls.length > 0 ? productImageUrls : undefined,
       aspectRatio,
       productName,
@@ -256,10 +276,13 @@ export async function POST(request: Request) {
       },
     }
 
-    console.log(`Generating image with ${selectedProvider} for product:`, productName)
-    console.log('Aspect ratio:', aspectRatio)
-    console.log('Template URL (public):', isPublicUrl ? templateUrl : 'N/A (user upload)')
-    console.log('Product image URLs:', productImageUrls.length)
+    console.log(`[Generate] Request ready:`)
+    console.log(`  - Provider: ${selectedProvider}`)
+    console.log(`  - Product: ${productName}`)
+    console.log(`  - Aspect ratio: ${aspectRatio}`)
+    console.log(`  - Template URL: ${isPublicUrl ? templateUrl : 'N/A (data URL)'}`)
+    console.log(`  - Product URLs: ${productImageUrls.length}`)
+    console.log(`  - Product Base64: ${productImagesBase64.length}`)
 
     // Generate image
     let result = await generateImage(generateRequest, apiKeys)
