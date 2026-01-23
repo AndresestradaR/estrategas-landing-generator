@@ -79,7 +79,7 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
   },
   'gemini-2.5-flash': {
     id: 'gemini-2.5-flash',
-    name: 'Gemini 2.5 Flash',
+    name: 'Gemini 2.0 Flash',
     description: 'Rapido y gratuito - ideal para pruebas',
     company: 'google',
     companyName: 'Google',
@@ -90,7 +90,7 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     pricePerImage: 'Gratis',
     recommended: false,
     tags: ['FAST'],
-    apiModelId: 'gemini-2.5-flash-preview-image-generation',
+    apiModelId: 'gemini-2.0-flash-exp-image-generation',
   },
 
   // ============================================
