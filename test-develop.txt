@@ -1,4 +1,0 @@
-# Test de branch develop
-
-Este archivo confirma que el branch develop funciona correctamente.
-Fecha: 2026-01-23
