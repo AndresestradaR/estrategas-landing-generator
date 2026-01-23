@@ -165,17 +165,18 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
   'seedream-3': {
     id: 'seedream-3',
     name: 'Seedream 3',
-    description: 'Exceptional creativity',
+    description: 'Exceptional creativity - 2K native resolution',
     company: 'bytedance',
     companyName: 'ByteDance',
-    supportsImageInput: true,
+    supportsImageInput: false,
     supportsAspectRatio: true,
-    maxImages: 6,
+    maxImages: 1,
     requiresPolling: true,
     pricePerImage: '~$0.02',
     tags: [],
-    // KIE.ai uses: bytedance/seedream-3.0
-    apiModelId: 'bytedance/seedream-3.0',
+    // KIE.ai uses: bytedance/seedream (NOT bytedance/seedream-3.0)
+    // See: https://docs.kie.ai/market/seedream/seedream.md
+    apiModelId: 'bytedance/seedream',
   },
 
   // ============================================
@@ -531,7 +532,7 @@ export function mapAspectRatioForProvider(ratio: string, provider: ImageProvider
   // Most providers use the same format
   if (provider === 'seedream') {
     // Seedream 4.5 uses direct aspect_ratio like "1:1", "9:16", etc.
-    // Seedream 4.0 uses image_size enum
+    // Seedream 4.0 and 3.0 use image_size enum
     // We'll return the direct ratio and let the provider handle it
     return ratio
   }
