@@ -7,6 +7,8 @@ import {
   ImageProviderCompany,
   IMAGE_MODELS,
   IMAGE_COMPANY_GROUPS,
+  LANDING_COMPANY_GROUPS,
+  STUDIO_COMPANY_GROUPS,
   ModelTag,
 } from '@/lib/image-providers/types'
 
@@ -23,6 +25,8 @@ interface ModelSelectorProps {
   disabled?: boolean
   availableProviders?: ImageProviderCompany[]
   apiKeyStatus?: ApiKeyStatus
+  // Which context: 'landing' shows only models good for landings, 'studio' shows all
+  context?: 'landing' | 'studio'
 }
 
 const COMPANY_ICONS: Record<string, React.ReactNode> = {
@@ -49,14 +53,18 @@ export default function ModelSelector({
   disabled,
   availableProviders,
   apiKeyStatus,
+  context = 'landing', // Default to landing (filtered models)
 }: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false)
   const selectedModel = IMAGE_MODELS[value]
 
+  // Use appropriate groups based on context
+  const baseGroups = context === 'studio' ? STUDIO_COMPANY_GROUPS : LANDING_COMPANY_GROUPS
+
   // Filter companies based on available providers
   const filteredGroups = availableProviders
-    ? IMAGE_COMPANY_GROUPS.filter((g) => availableProviders.includes(g.id))
-    : IMAGE_COMPANY_GROUPS
+    ? baseGroups.filter((g) => availableProviders.includes(g.id))
+    : baseGroups
 
   const handleModelSelect = (modelId: ImageModelId) => {
     const model = IMAGE_MODELS[modelId]
@@ -233,10 +241,14 @@ export function ModelSelectorGrid({
   disabled,
   availableProviders,
   apiKeyStatus,
+  context = 'landing', // Default to landing
 }: ModelSelectorProps) {
+  // Use appropriate groups based on context
+  const baseGroups = context === 'studio' ? STUDIO_COMPANY_GROUPS : LANDING_COMPANY_GROUPS
+
   const filteredGroups = availableProviders
-    ? IMAGE_COMPANY_GROUPS.filter((g) => availableProviders.includes(g.id))
-    : IMAGE_COMPANY_GROUPS
+    ? baseGroups.filter((g) => availableProviders.includes(g.id))
+    : baseGroups
 
   const hasApiKey = (company: ImageProviderCompany): boolean => {
     if (!apiKeyStatus) return true
