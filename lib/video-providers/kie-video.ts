@@ -56,6 +56,12 @@ export async function generateVideo(
 /**
  * Generate video with Veo 3.1 (special endpoint)
  * Endpoint: POST /api/v1/veo/generate
+ * 
+ * From docs:
+ * - model: "veo3" or "veo3_fast"
+ * - aspect_ratio: "16:9", "9:16", or "Auto"
+ * - generationType: TEXT_2_VIDEO, FIRST_AND_LAST_FRAMES_2_VIDEO, REFERENCE_2_VIDEO
+ * - imageUrls: array of public URLs
  */
 async function generateVeoVideo(
   request: GenerateVideoRequest,
@@ -65,17 +71,15 @@ async function generateVeoVideo(
   const body: Record<string, any> = {
     model: model, // veo3 or veo3_fast
     prompt: request.prompt,
-    aspect_ratio: request.aspectRatio || '16:9',
+    aspect_ratio: request.aspectRatio || '16:9', // Veo uses "16:9", "9:16", "Auto"
     enableTranslation: true,
   }
 
-  // Image-to-video
+  // Determine generation type based on images
   if (request.imageUrls && request.imageUrls.length > 0) {
     body.imageUrls = request.imageUrls
-    // If 2 images: first frame and last frame
-    if (request.imageUrls.length === 2) {
-      body.generationType = 'FIRST_AND_LAST_FRAMES_2_VIDEO'
-    }
+    // 1 or 2 images: first/last frame mode
+    body.generationType = 'FIRST_AND_LAST_FRAMES_2_VIDEO'
   } else {
     body.generationType = 'TEXT_2_VIDEO'
   }
@@ -141,9 +145,10 @@ async function generateStandardVideo(
     input.image_urls = request.imageUrls
   }
 
-  // Aspect ratio
+  // Aspect ratio - different models may use different formats
   if (request.aspectRatio) {
-    input.aspect_ratio = request.aspectRatio === '9:16' ? 'portrait' : 'landscape'
+    // Some models use 16:9 format, others use portrait/landscape
+    input.aspect_ratio = request.aspectRatio
   }
 
   // Duration - model specific
@@ -233,12 +238,12 @@ export async function checkVideoStatus(
 
     const data = await response.json()
     const taskData = data.data || data
-    const state = taskData.state
+    const state = taskData.state || ''
 
-    console.log('[Video] Status:', state)
+    console.log('[Video] Status:', state, '| Data:', JSON.stringify(taskData).substring(0, 200))
 
     // Processing states
-    if (['waiting', 'queuing', 'generating', 'processing'].includes(state)) {
+    if (['waiting', 'queuing', 'generating', 'processing', 'running', 'pending'].includes(state)) {
       return {
         success: true,
         taskId: taskId,
@@ -247,8 +252,8 @@ export async function checkVideoStatus(
       }
     }
 
-    // Failed
-    if (state === 'fail' || state === 'failed') {
+    // Failed states
+    if (['fail', 'failed', 'error'].includes(state)) {
       return {
         success: false,
         error: taskData.failMsg || taskData.failCode || 'Video generation failed',
@@ -257,9 +262,10 @@ export async function checkVideoStatus(
     }
 
     // Success - extract video URL
-    if (state === 'success') {
+    if (state === 'success' || state === 'completed') {
       let videoUrl: string | undefined
 
+      // Try to get video URL from various fields
       if (taskData.resultJson) {
         try {
           const result = typeof taskData.resultJson === 'string'
@@ -271,10 +277,16 @@ export async function checkVideoStatus(
                      result.video_url ||
                      result.resultUrls?.[0] ||
                      result.videos?.[0] ||
-                     result.url
+                     result.url ||
+                     result.output?.url
         } catch (e) {
           console.error('[Video] Failed to parse resultJson:', e)
         }
+      }
+
+      // Also check direct fields on taskData
+      if (!videoUrl) {
+        videoUrl = taskData.videoUrl || taskData.video_url || taskData.resultUrl
       }
 
       if (videoUrl) {
@@ -284,6 +296,24 @@ export async function checkVideoStatus(
           status: 'completed',
           provider: 'kie',
         }
+      }
+
+      // Have success state but no URL - might still be processing
+      console.log('[Video] Success state but no URL found, returning as completed without URL')
+      return {
+        success: false,
+        error: 'Video completed but URL not found',
+        provider: 'kie',
+      }
+    }
+
+    // If state is empty or undefined, task might still be initializing
+    if (!state) {
+      return {
+        success: true,
+        taskId: taskId,
+        status: 'processing',
+        provider: 'kie',
       }
     }
 
