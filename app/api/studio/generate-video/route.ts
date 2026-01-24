@@ -11,6 +11,7 @@ import {
 /**
  * Upload base64 image to Supabase Storage and get public URL
  * KIE.ai requires public URLs, not base64
+ * Uses the existing 'landing-images' bucket (same as image generation)
  */
 async function uploadImageToStorage(
   supabase: any,
@@ -26,15 +27,14 @@ async function uploadImageToStorage(
   // Convert to buffer
   const buffer = Buffer.from(base64Clean, 'base64')
 
-  // Generate unique filename
+  // Generate unique filename in studio/video subfolder
   const timestamp = Date.now()
-  const filename = `video-input-${userId}-${timestamp}-${index}.jpg`
-  const path = `video-inputs/${filename}`
+  const filename = `studio/video/${userId}/${timestamp}-${index}.jpg`
 
-  // Upload to Supabase Storage
+  // Upload to Supabase Storage (landing-images bucket - same as image generation)
   const { data, error } = await supabase.storage
-    .from('studio-assets')
-    .upload(path, buffer, {
+    .from('landing-images')
+    .upload(filename, buffer, {
       contentType: 'image/jpeg',
       upsert: true,
     })
@@ -46,8 +46,8 @@ async function uploadImageToStorage(
 
   // Get public URL
   const { data: urlData } = supabase.storage
-    .from('studio-assets')
-    .getPublicUrl(path)
+    .from('landing-images')
+    .getPublicUrl(filename)
 
   console.log('[Video] Uploaded image:', urlData.publicUrl)
   return urlData.publicUrl
