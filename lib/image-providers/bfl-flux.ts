@@ -68,35 +68,31 @@ function getFluxEndpoint(apiModelId: string): string {
   return `https://api.bfl.ai/v1/${apiModelId}`
 }
 
-// Check which parameter to use for image input based on model
-function getImageInputConfig(apiModelId: string): { 
-  paramName: string; 
-  strengthParam?: string;
-  supportsInput: boolean;
-} {
-  // FLUX 2 models use different parameters
-  if (apiModelId === 'flux-2-max' || apiModelId === 'flux-2-pro') {
-    // FLUX 2 Max/Pro use control_image for image conditioning
-    return { paramName: 'control_image', strengthParam: 'control_strength', supportsInput: true }
+// Check which models support image input
+// FLUX 2 models use input_image for image editing
+// FLUX 2 Klein (text-only) does NOT support image input
+function supportsImageInput(apiModelId: string): boolean {
+  // Text-only models
+  if (apiModelId === 'flux-2-klein-4b' || apiModelId === 'flux-2-klein-9b') {
+    return false
   }
-  
-  if (apiModelId === 'flux-2-flex') {
-    // FLUX 2 Flex uses input_image for reference
-    return { paramName: 'input_image', strengthParam: 'strength', supportsInput: true }
+  // All other FLUX 2 models support input_image
+  if (apiModelId.startsWith('flux-2-')) {
+    return true
   }
-  
-  // FLUX 1 Kontext models use image_prompt
+  // FLUX 1 Kontext models support image_prompt
   if (apiModelId.includes('kontext')) {
-    return { paramName: 'image_prompt', strengthParam: 'image_prompt_strength', supportsInput: true }
+    return true
   }
-  
-  // Models without image input support
-  if (apiModelId === 'flux-2-klein-4b' || apiModelId === 'flux-dev' || apiModelId === 'flux-schnell') {
-    return { paramName: '', supportsInput: false }
+  return false
+}
+
+// Clean base64 string - remove data URL prefix if present
+function cleanBase64(data: string): string {
+  if (data.includes(',')) {
+    return data.split(',')[1]
   }
-  
-  // Default - try control_image
-  return { paramName: 'control_image', strengthParam: 'control_strength', supportsInput: true }
+  return data
 }
 
 export const fluxProvider: ImageProvider = {
@@ -113,43 +109,51 @@ export const fluxProvider: ImageProvider = {
       const apiModelId = request.modelId ? getApiModelId(request.modelId) : 'flux-2-pro'
       const endpoint = getFluxEndpoint(apiModelId)
 
-      // Get image input configuration for this model
-      const imageConfig = getImageInputConfig(apiModelId)
+      // Get images from template or product images
+      const images: string[] = []
+      if (request.templateBase64) {
+        images.push(cleanBase64(request.templateBase64))
+      }
+      if (request.productImagesBase64 && request.productImagesBase64.length > 0) {
+        for (const img of request.productImagesBase64) {
+          images.push(cleanBase64(img.data))
+        }
+      }
 
       // Build request body based on model capabilities
       const requestBody: Record<string, any> = {
         prompt: prompt,
-        aspect_ratio: request.aspectRatio || '9:16',
       }
 
-      // Get image from template or product images
-      let imageBase64: string | null = null
-      if (request.templateBase64) {
-        imageBase64 = request.templateBase64
-      } else if (request.productImagesBase64 && request.productImagesBase64.length > 0) {
-        imageBase64 = request.productImagesBase64[0].data
-      }
-
-      // Add image input with correct parameter name for this model
-      if (imageConfig.supportsInput && imageBase64) {
-        // Format: data:image/jpeg;base64,{data} or just base64 depending on API
-        // BFL API expects base64 string without data URL prefix
-        const cleanBase64 = imageBase64.includes(',') 
-          ? imageBase64.split(',')[1] 
-          : imageBase64
+      // FLUX 2 models (Pro, Max, Flex) use input_image for image editing
+      // According to BFL docs: input_image is REQUIRED for image editing
+      // input_image_2 through input_image_8 for additional references
+      if (supportsImageInput(apiModelId) && images.length > 0) {
+        // First image is the main input_image
+        requestBody.input_image = images[0]
         
-        requestBody[imageConfig.paramName] = cleanBase64
-        
-        if (imageConfig.strengthParam) {
-          // Use higher strength (0.7) to better preserve the reference
-          requestBody[imageConfig.strengthParam] = 0.7
+        // Additional images go into input_image_2, input_image_3, etc.
+        for (let i = 1; i < images.length && i < 8; i++) {
+          requestBody[`input_image_${i + 1}`] = images[i]
         }
-
-        console.log(`[FLUX] Adding image input with param: ${imageConfig.paramName}, strength: ${imageConfig.strengthParam || 'N/A'}`)
+        
+        console.log(`[FLUX] Added ${images.length} input image(s) to request`)
+        
+        // For image editing, dimensions come from input image
+        // We can optionally set width/height to override
+      } else {
+        // For text-to-image (no input image), use aspect_ratio
+        requestBody.aspect_ratio = request.aspectRatio || '9:16'
+        console.log(`[FLUX] Text-to-image mode with aspect_ratio: ${requestBody.aspect_ratio}`)
       }
+
+      // Output format
+      requestBody.output_format = 'jpeg'
 
       console.log(`[FLUX] Endpoint: ${endpoint}`)
-      console.log(`[FLUX] Request params:`, Object.keys(requestBody))
+      console.log(`[FLUX] Model: ${apiModelId}`)
+      console.log(`[FLUX] Has input images: ${images.length > 0}`)
+      console.log(`[FLUX] Prompt: ${prompt.substring(0, 100)}...`)
 
       const createResponse = await fetch(endpoint, {
         method: 'POST',
@@ -178,12 +182,13 @@ export const fluxProvider: ImageProvider = {
       }
 
       console.log(`[FLUX] Task created: ${requestId || pollingUrl}`)
+      console.log(`[FLUX] Cost: ${createData.cost} credits`)
 
       // Return pending status with polling URL
       return {
         success: true,
         provider: 'flux',
-        taskId: pollingUrl || requestId, // Use polling URL as taskId for easier polling
+        taskId: pollingUrl || requestId,
         status: 'processing',
       }
     } catch (error: any) {
@@ -285,7 +290,7 @@ export async function generateWithFluxKontext(
     }
 
     if (imageBase64) {
-      requestBody.image_prompt = imageBase64
+      requestBody.image_prompt = cleanBase64(imageBase64)
       requestBody.image_prompt_strength = 0.5
     }
 
