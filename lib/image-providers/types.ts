@@ -32,6 +32,9 @@ export type ImageProviderType = 'gemini' | 'openai' | 'seedream' | 'flux'
 
 export type ModelTag = 'NEW' | 'TRENDING' | 'FAST' | 'PREMIUM' | 'BEST_TEXT' | 'HD' | '4K' | 'RECOMENDADO'
 
+// Where models are available
+export type ModelAvailability = 'landing' | 'studio' | 'both'
+
 export interface ImageModelConfig {
   id: ImageModelId
   name: string
@@ -47,6 +50,8 @@ export interface ImageModelConfig {
   tags?: ModelTag[]
   // The actual API model ID to use when calling the provider
   apiModelId: string
+  // Where this model is available: 'landing', 'studio', or 'both'
+  availableIn: ModelAvailability
 }
 
 export interface ImageCompanyGroup {
@@ -60,7 +65,7 @@ export interface ImageCompanyGroup {
 // All available models with full configuration
 export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
   // ============================================
-  // GOOGLE (2 models only)
+  // GOOGLE (2 models only) - BOTH available in landing
   // ============================================
   'gemini-3-pro-image': {
     id: 'gemini-3-pro-image',
@@ -76,6 +81,7 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     recommended: true,
     tags: ['RECOMENDADO', 'BEST_TEXT', 'PREMIUM', 'NEW'],
     apiModelId: 'gemini-3-pro-image-preview',
+    availableIn: 'both',
   },
   'gemini-2.5-flash': {
     id: 'gemini-2.5-flash',
@@ -91,10 +97,11 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     recommended: false,
     tags: ['FAST'],
     apiModelId: 'gemini-2.5-flash-image',
+    availableIn: 'both',
   },
 
   // ============================================
-  // OPENAI (1 model only - GPT Image 1.5)
+  // OPENAI (1 model only) - Available in landing
   // ============================================
   'gpt-image-1.5': {
     id: 'gpt-image-1.5',
@@ -110,11 +117,12 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     recommended: true,
     tags: ['RECOMENDADO', 'NEW', 'TRENDING'],
     apiModelId: 'gpt-image-1.5',
+    availableIn: 'both',
   },
 
   // ============================================
   // BYTEDANCE via KIE.ai (4 models)
-  // KIE.ai model names: https://docs.kie.ai/market/seedream/
+  // Only Seedream 4.5 available in landing (preserves product best)
   // ============================================
   'seedream-4.5': {
     id: 'seedream-4.5',
@@ -129,8 +137,8 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     pricePerImage: '~$0.032',
     recommended: true,
     tags: ['RECOMENDADO', 'TRENDING'],
-    // KIE.ai uses: seedream/4.5-text-to-image or seedream/4.5-edit
     apiModelId: 'seedream/4.5-text-to-image',
+    availableIn: 'both', // Only Seedream model for landings
   },
   'seedream-4': {
     id: 'seedream-4',
@@ -144,8 +152,8 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     requiresPolling: true,
     pricePerImage: '~$0.03',
     tags: [],
-    // KIE.ai uses: bytedance/seedream-v4-text-to-image or bytedance/seedream-v4-edit
     apiModelId: 'bytedance/seedream-v4-text-to-image',
+    availableIn: 'studio', // Studio only - doesn't preserve product well
   },
   'seedream-4-4k': {
     id: 'seedream-4-4k',
@@ -159,8 +167,8 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     requiresPolling: true,
     pricePerImage: '~$0.04',
     tags: ['4K'],
-    // Same as seedream-4 but with 4K resolution
     apiModelId: 'bytedance/seedream-v4-text-to-image',
+    availableIn: 'studio', // Studio only
   },
   'seedream-3': {
     id: 'seedream-3',
@@ -174,14 +182,13 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     requiresPolling: true,
     pricePerImage: '~$0.02',
     tags: [],
-    // KIE.ai uses: bytedance/seedream (NOT bytedance/seedream-3.0)
-    // See: https://docs.kie.ai/market/seedream/seedream.md
     apiModelId: 'bytedance/seedream',
+    availableIn: 'studio', // Studio only - no image input
   },
 
   // ============================================
   // BLACK FOREST LABS FLUX (10 models)
-  // API docs: https://docs.bfl.ai/flux_2/flux2_overview
+  // ALL studio only - don't preserve product/template for landings
   // ============================================
   'flux-2-max': {
     id: 'flux-2-max',
@@ -196,6 +203,7 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     pricePerImage: '~$0.08',
     tags: ['PREMIUM'],
     apiModelId: 'flux-2-max',
+    availableIn: 'studio',
   },
   'flux-2-klein': {
     id: 'flux-2-klein',
@@ -209,9 +217,8 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     requiresPolling: true,
     pricePerImage: '~$0.02',
     tags: ['NEW', 'FAST'],
-    // BFL API endpoint: /v1/flux-2-klein-4b (4B model, Apache 2.0)
-    // See: https://docs.bfl.ai/flux_2/flux2_image_editing
     apiModelId: 'flux-2-klein-4b',
+    availableIn: 'studio',
   },
   'flux-2-pro': {
     id: 'flux-2-pro',
@@ -224,9 +231,9 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     maxImages: 1,
     requiresPolling: true,
     pricePerImage: '~$0.05',
-    recommended: true,
-    tags: ['RECOMENDADO', 'NEW'],
+    tags: ['NEW'],
     apiModelId: 'flux-2-pro',
+    availableIn: 'studio',
   },
   'flux-2-flex': {
     id: 'flux-2-flex',
@@ -241,6 +248,7 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     pricePerImage: '~$0.05',
     tags: ['NEW'],
     apiModelId: 'flux-2-flex',
+    availableIn: 'studio',
   },
   'flux-1-kontext-max': {
     id: 'flux-1-kontext-max',
@@ -255,6 +263,7 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     pricePerImage: '~$0.05',
     tags: [],
     apiModelId: 'flux-kontext-max',
+    availableIn: 'studio',
   },
   'flux-1-kontext-pro': {
     id: 'flux-1-kontext-pro',
@@ -269,6 +278,7 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     pricePerImage: '~$0.04',
     tags: [],
     apiModelId: 'flux-kontext-pro',
+    availableIn: 'studio',
   },
   'flux-1': {
     id: 'flux-1',
@@ -283,6 +293,7 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     pricePerImage: '~$0.01',
     tags: [],
     apiModelId: 'flux-dev',
+    availableIn: 'studio',
   },
   'flux-1-fast': {
     id: 'flux-1-fast',
@@ -297,6 +308,7 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     pricePerImage: '~$0.01',
     tags: ['FAST'],
     apiModelId: 'flux-schnell',
+    availableIn: 'studio',
   },
   'flux-1-realism': {
     id: 'flux-1-realism',
@@ -311,6 +323,7 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     pricePerImage: '~$0.03',
     tags: [],
     apiModelId: 'flux-realism',
+    availableIn: 'studio',
   },
   'flux-1.1': {
     id: 'flux-1.1',
@@ -325,10 +338,16 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     pricePerImage: '~$0.02',
     tags: [],
     apiModelId: 'flux-pro-1.1',
+    availableIn: 'studio',
   },
 }
 
-// Grouped by company for hierarchical selector
+// Helper to filter models by availability
+function filterModelsByAvailability(models: ImageModelConfig[], target: ModelAvailability): ImageModelConfig[] {
+  return models.filter(m => m.availableIn === target || m.availableIn === 'both')
+}
+
+// Grouped by company for hierarchical selector - ALL models
 export const IMAGE_COMPANY_GROUPS: ImageCompanyGroup[] = [
   {
     id: 'google',
@@ -380,6 +399,44 @@ export const IMAGE_COMPANY_GROUPS: ImageCompanyGroup[] = [
     ],
   },
 ]
+
+// Models available for LANDING page generation
+// Only models that preserve product + template well
+export const LANDING_COMPANY_GROUPS: ImageCompanyGroup[] = [
+  {
+    id: 'google',
+    name: 'Google',
+    icon: 'Sparkles',
+    color: 'from-blue-500 to-purple-500',
+    models: filterModelsByAvailability([
+      IMAGE_MODELS['gemini-3-pro-image'],
+      IMAGE_MODELS['gemini-2.5-flash'],
+    ], 'landing'),
+  },
+  {
+    id: 'openai',
+    name: 'OpenAI',
+    icon: 'Zap',
+    color: 'from-green-500 to-emerald-500',
+    models: filterModelsByAvailability([
+      IMAGE_MODELS['gpt-image-1.5'],
+    ], 'landing'),
+  },
+  {
+    id: 'bytedance',
+    name: 'ByteDance',
+    icon: 'Image',
+    color: 'from-orange-500 to-red-500',
+    models: filterModelsByAvailability([
+      IMAGE_MODELS['seedream-4.5'],
+    ], 'landing'),
+  },
+  // No BFL/FLUX for landings - they don't preserve product
+]
+
+// Models available for STUDIO IA (creative generation)
+// All models including experimental ones
+export const STUDIO_COMPANY_GROUPS: ImageCompanyGroup[] = IMAGE_COMPANY_GROUPS
 
 // Legacy providers for backward compatibility
 export interface ImageProviderConfig {
