@@ -29,7 +29,7 @@ export async function generateVideo(
       throw new Error(`Unknown video model: ${request.modelId}`)
     }
 
-    const hasImage = request.imageUrls && request.imageUrls.length > 0
+    const hasImage = !!(request.imageUrls && request.imageUrls.length > 0)
     const apiModelId = getVideoApiModelId(request.modelId, hasImage)
 
     console.log(`[Video] Model: ${request.modelId} -> API model: ${apiModelId}`)
@@ -131,8 +131,6 @@ async function generateStandardVideo(
   apiKey: string,
   model: string
 ): Promise<GenerateVideoResult> {
-  const modelConfig = VIDEO_MODELS[request.modelId]
-
   // Build input object
   const input: Record<string, any> = {
     prompt: request.prompt,
