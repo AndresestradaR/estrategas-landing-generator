@@ -15,22 +15,16 @@ export type ImageModelId =
   | 'seedream-4'
   | 'seedream-4-4k'
   | 'seedream-3'
-  // Black Forest Labs FLUX (10 models)
+  // Black Forest Labs FLUX 2 (4 models - removed FLUX 1.x obsolete)
   | 'flux-2-max'
   | 'flux-2-klein'
   | 'flux-2-pro'
   | 'flux-2-flex'
-  | 'flux-1-kontext-max'
-  | 'flux-1-kontext-pro'
-  | 'flux-1'
-  | 'flux-1-fast'
-  | 'flux-1-realism'
-  | 'flux-1.1'
 
 // Legacy type for backward compatibility
 export type ImageProviderType = 'gemini' | 'openai' | 'seedream' | 'flux'
 
-export type ModelTag = 'NEW' | 'TRENDING' | 'FAST' | 'PREMIUM' | 'BEST_TEXT' | 'HD' | '4K' | 'RECOMENDADO'
+export type ModelTag = 'NEW' | 'TRENDING' | 'FAST' | 'PREMIUM' | 'BEST_TEXT' | 'HD' | '4K' | 'RECOMENDADO' | 'TEXT_ONLY'
 
 // Where models are available
 export type ModelAvailability = 'landing' | 'studio' | 'both'
@@ -65,7 +59,7 @@ export interface ImageCompanyGroup {
 // All available models with full configuration
 export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
   // ============================================
-  // GOOGLE (2 models only) - BOTH available in landing
+  // GOOGLE (2 models) - Both support image input
   // ============================================
   'gemini-3-pro-image': {
     id: 'gemini-3-pro-image',
@@ -101,7 +95,7 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
   },
 
   // ============================================
-  // OPENAI (1 model only) - Available in landing
+  // OPENAI (1 model) - Supports image input
   // ============================================
   'gpt-image-1.5': {
     id: 'gpt-image-1.5',
@@ -122,12 +116,13 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
 
   // ============================================
   // BYTEDANCE via KIE.ai (4 models)
-  // Only Seedream 4.5 available in landing (preserves product best)
+  // Seedream 3: TEXT ONLY (no image input)
+  // Seedream 4, 4.5, 4K: Support image input
   // ============================================
   'seedream-4.5': {
     id: 'seedream-4.5',
     name: 'Seedream 4.5',
-    description: 'Highly aesthetic multi-image',
+    description: 'Multi-imagen estetica - Soporta imagenes de referencia',
     company: 'bytedance',
     companyName: 'ByteDance',
     supportsImageInput: true,
@@ -138,12 +133,12 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     recommended: true,
     tags: ['RECOMENDADO', 'TRENDING'],
     apiModelId: 'seedream/4.5-text-to-image',
-    availableIn: 'both', // Only Seedream model for landings
+    availableIn: 'both',
   },
   'seedream-4': {
     id: 'seedream-4',
     name: 'Seedream 4',
-    description: 'Multi-image generation and editing',
+    description: 'Generacion y edicion multi-imagen',
     company: 'bytedance',
     companyName: 'ByteDance',
     supportsImageInput: true,
@@ -153,12 +148,12 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     pricePerImage: '~$0.03',
     tags: [],
     apiModelId: 'bytedance/seedream-v4-text-to-image',
-    availableIn: 'studio', // Studio only - doesn't preserve product well
+    availableIn: 'studio',
   },
   'seedream-4-4k': {
     id: 'seedream-4-4k',
     name: 'Seedream 4 4K',
-    description: '4K with reference images',
+    description: '4K con imagenes de referencia',
     company: 'bytedance',
     companyName: 'ByteDance',
     supportsImageInput: true,
@@ -168,12 +163,12 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     pricePerImage: '~$0.04',
     tags: ['4K'],
     apiModelId: 'bytedance/seedream-v4-text-to-image',
-    availableIn: 'studio', // Studio only
+    availableIn: 'studio',
   },
   'seedream-3': {
     id: 'seedream-3',
     name: 'Seedream 3',
-    description: 'Exceptional creativity - 2K native resolution',
+    description: 'Solo texto a imagen - Creatividad excepcional',
     company: 'bytedance',
     companyName: 'ByteDance',
     supportsImageInput: false,
@@ -181,19 +176,21 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     maxImages: 1,
     requiresPolling: true,
     pricePerImage: '~$0.02',
-    tags: [],
+    tags: ['TEXT_ONLY'],
     apiModelId: 'bytedance/seedream',
-    availableIn: 'studio', // Studio only - no image input
+    availableIn: 'studio',
   },
 
   // ============================================
-  // BLACK FOREST LABS FLUX (10 models)
-  // ALL studio only - don't preserve product/template for landings
+  // BLACK FOREST LABS FLUX 2 (4 models)
+  // Removed FLUX 1.x obsolete models
+  // flux-2-klein: TEXT ONLY
+  // flux-2-max, pro, flex: Support image input
   // ============================================
   'flux-2-max': {
     id: 'flux-2-max',
     name: 'Flux.2 Max',
-    description: 'Advanced editing, maximum quality',
+    description: 'Edicion avanzada, maxima calidad',
     company: 'bfl',
     companyName: 'Black Forest Labs',
     supportsImageInput: true,
@@ -208,7 +205,7 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
   'flux-2-klein': {
     id: 'flux-2-klein',
     name: 'Flux 2 Klein',
-    description: 'Fast with high quality',
+    description: 'Solo texto a imagen - Rapido y alta calidad',
     company: 'bfl',
     companyName: 'Black Forest Labs',
     supportsImageInput: false,
@@ -216,14 +213,14 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     maxImages: 1,
     requiresPolling: true,
     pricePerImage: '~$0.02',
-    tags: ['NEW', 'FAST'],
+    tags: ['NEW', 'FAST', 'TEXT_ONLY'],
     apiModelId: 'flux-2-klein-4b',
     availableIn: 'studio',
   },
   'flux-2-pro': {
     id: 'flux-2-pro',
     name: 'Flux.2 Pro',
-    description: 'Next-gen editing and generation',
+    description: 'Edicion y generacion next-gen',
     company: 'bfl',
     companyName: 'Black Forest Labs',
     supportsImageInput: true,
@@ -238,7 +235,7 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
   'flux-2-flex': {
     id: 'flux-2-flex',
     name: 'Flux.2 Flex',
-    description: 'Typography support',
+    description: 'Soporte de tipografia',
     company: 'bfl',
     companyName: 'Black Forest Labs',
     supportsImageInput: true,
@@ -250,96 +247,6 @@ export const IMAGE_MODELS: Record<ImageModelId, ImageModelConfig> = {
     apiModelId: 'flux-2-flex',
     availableIn: 'studio',
   },
-  'flux-1-kontext-max': {
-    id: 'flux-1-kontext-max',
-    name: 'Flux.1 Kontext Max',
-    description: 'Best for pros with reference images',
-    company: 'bfl',
-    companyName: 'Black Forest Labs',
-    supportsImageInput: true,
-    supportsAspectRatio: true,
-    maxImages: 1,
-    requiresPolling: true,
-    pricePerImage: '~$0.05',
-    tags: [],
-    apiModelId: 'flux-kontext-max',
-    availableIn: 'studio',
-  },
-  'flux-1-kontext-pro': {
-    id: 'flux-1-kontext-pro',
-    name: 'Flux.1 Kontext Pro',
-    description: 'Daily use, reference images',
-    company: 'bfl',
-    companyName: 'Black Forest Labs',
-    supportsImageInput: true,
-    supportsAspectRatio: true,
-    maxImages: 1,
-    requiresPolling: true,
-    pricePerImage: '~$0.04',
-    tags: [],
-    apiModelId: 'flux-kontext-pro',
-    availableIn: 'studio',
-  },
-  'flux-1': {
-    id: 'flux-1',
-    name: 'Flux.1',
-    description: 'Base model',
-    company: 'bfl',
-    companyName: 'Black Forest Labs',
-    supportsImageInput: false,
-    supportsAspectRatio: true,
-    maxImages: 1,
-    requiresPolling: true,
-    pricePerImage: '~$0.01',
-    tags: [],
-    apiModelId: 'flux-dev',
-    availableIn: 'studio',
-  },
-  'flux-1-fast': {
-    id: 'flux-1-fast',
-    name: 'Flux.1 Fast',
-    description: '<1s generations',
-    company: 'bfl',
-    companyName: 'Black Forest Labs',
-    supportsImageInput: false,
-    supportsAspectRatio: true,
-    maxImages: 1,
-    requiresPolling: true,
-    pricePerImage: '~$0.01',
-    tags: ['FAST'],
-    apiModelId: 'flux-schnell',
-    availableIn: 'studio',
-  },
-  'flux-1-realism': {
-    id: 'flux-1-realism',
-    name: 'Flux.1 Realism',
-    description: 'Photorealism only',
-    company: 'bfl',
-    companyName: 'Black Forest Labs',
-    supportsImageInput: false,
-    supportsAspectRatio: true,
-    maxImages: 1,
-    requiresPolling: true,
-    pricePerImage: '~$0.03',
-    tags: [],
-    apiModelId: 'flux-realism',
-    availableIn: 'studio',
-  },
-  'flux-1.1': {
-    id: 'flux-1.1',
-    name: 'Flux.1.1',
-    description: 'Improved base',
-    company: 'bfl',
-    companyName: 'Black Forest Labs',
-    supportsImageInput: false,
-    supportsAspectRatio: true,
-    maxImages: 1,
-    requiresPolling: true,
-    pricePerImage: '~$0.02',
-    tags: [],
-    apiModelId: 'flux-pro-1.1',
-    availableIn: 'studio',
-  },
 }
 
 // Helper to filter models by availability
@@ -347,7 +254,7 @@ function filterModelsByAvailability(models: ImageModelConfig[], target: ModelAva
   return models.filter(m => m.availableIn === target || m.availableIn === 'both')
 }
 
-// Grouped by company for hierarchical selector - ALL models
+// Grouped by company for hierarchical selector - ALL models (for Studio IA)
 export const IMAGE_COMPANY_GROUPS: ImageCompanyGroup[] = [
   {
     id: 'google',
@@ -387,15 +294,9 @@ export const IMAGE_COMPANY_GROUPS: ImageCompanyGroup[] = [
     color: 'from-pink-500 to-rose-500',
     models: [
       IMAGE_MODELS['flux-2-max'],
-      IMAGE_MODELS['flux-2-klein'],
       IMAGE_MODELS['flux-2-pro'],
       IMAGE_MODELS['flux-2-flex'],
-      IMAGE_MODELS['flux-1-kontext-max'],
-      IMAGE_MODELS['flux-1-kontext-pro'],
-      IMAGE_MODELS['flux-1'],
-      IMAGE_MODELS['flux-1-fast'],
-      IMAGE_MODELS['flux-1-realism'],
-      IMAGE_MODELS['flux-1.1'],
+      IMAGE_MODELS['flux-2-klein'],
     ],
   },
 ]
