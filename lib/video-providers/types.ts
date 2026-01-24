@@ -1,4 +1,5 @@
 // Video Provider Types for Estudio IA
+// Prices from KIE.ai (January 2026)
 
 export type VideoProviderCompany = 'google' | 'kuaishou' | 'openai' | 'minimax' | 'seedance' | 'wan'
 
@@ -8,8 +9,9 @@ export type VideoModelId =
   | 'veo-3-fast'
   // Kling (Kuaishou)
   | 'kling-2.6'
-  | 'kling-o1'
+  | 'kling-v25-turbo'
   // OpenAI Sora
+  | 'sora-2-pro'
   | 'sora-2'
   // MiniMax Hailuo
   | 'hailuo-2.3'
@@ -21,7 +23,7 @@ export type VideoModelId =
   | 'wan-2.6'
   | 'wan-2.5'
 
-export type VideoModelTag = 'NEW' | 'FAST' | 'PREMIUM' | 'AUDIO' | 'REFERENCES' | 'MULTI_SHOTS' | 'RECOMENDADO'
+export type VideoModelTag = 'NEW' | 'FAST' | 'PREMIUM' | 'AUDIO' | 'REFERENCES' | 'MULTI_SHOTS' | 'RECOMENDADO' | 'IMG2VID'
 
 export interface VideoModelConfig {
   id: VideoModelId
@@ -30,7 +32,7 @@ export interface VideoModelConfig {
   description: string
   company: VideoProviderCompany
   companyName: string
-  priceRange: string // e.g., "800-2400 credits"
+  priceRange: string // USD price range
   durationRange: string // e.g., "4-12s"
   resolutions: string[] // e.g., ["720p", "1080p", "4K"]
   defaultResolution: string
@@ -50,7 +52,7 @@ export interface VideoCompanyGroup {
   models: VideoModelConfig[]
 }
 
-// Video Model Definitions
+// Video Model Definitions - Prices from KIE.ai
 export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
   // ============ GOOGLE VEO ============
   'veo-3.1': {
@@ -60,9 +62,9 @@ export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
     description: 'Flagship con referencias, audio y 4K',
     company: 'google',
     companyName: 'Google',
-    priceRange: '800-2400',
-    durationRange: '4-8s',
-    resolutions: ['720p', '1080p', '4K'],
+    priceRange: '$0.55-1.10',
+    durationRange: '5-10s',
+    resolutions: ['720p', '1080p'],
     defaultResolution: '1080p',
     supportsAudio: true,
     supportsReferences: true,
@@ -78,8 +80,8 @@ export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
     description: 'Generación rápida con audio',
     company: 'google',
     companyName: 'Google',
-    priceRange: '400-960',
-    durationRange: '4-8s',
+    priceRange: '$0.28-0.55',
+    durationRange: '5-10s',
     resolutions: ['720p', '1080p'],
     defaultResolution: '720p',
     supportsAudio: true,
@@ -92,57 +94,74 @@ export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
   // ============ KLING (KUAISHOU) ============
   'kling-2.6': {
     id: 'kling-2.6',
-    apiModelId: 'kling/2.6',
+    apiModelId: 'kling/v2-6-pro',
     name: 'Kling 2.6',
-    description: 'Último modelo con audio',
+    description: 'Último modelo, muy económico',
     company: 'kuaishou',
     companyName: 'Kling',
-    priceRange: '225-800',
+    priceRange: '$0.08-0.36',
     durationRange: '5-10s',
-    resolutions: ['1080p'],
+    resolutions: ['720p', '1080p'],
     defaultResolution: '1080p',
     supportsAudio: true,
     supportsReferences: false,
     supportsStartEndFrames: true,
     supportsMultiShots: false,
-    tags: ['NEW', 'AUDIO'],
+    tags: ['NEW', 'AUDIO', 'RECOMENDADO'],
     recommended: true,
   },
-  'kling-o1': {
-    id: 'kling-o1',
-    apiModelId: 'kling/o1',
-    name: 'Kling O1',
-    description: 'Generación con imágenes de referencia',
+  'kling-v25-turbo': {
+    id: 'kling-v25-turbo',
+    apiModelId: 'kling/v2-5-turbo-image-to-video-pro',
+    name: 'Kling V2.5 Turbo',
+    description: 'Image-to-video profesional',
     company: 'kuaishou',
     companyName: 'Kling',
-    priceRange: '225-1500',
-    durationRange: '3-10s',
+    priceRange: '$0.21-0.42',
+    durationRange: '5-10s',
     resolutions: ['720p', '1080p'],
     defaultResolution: '1080p',
     supportsAudio: false,
-    supportsReferences: true,
+    supportsReferences: false,
     supportsStartEndFrames: true,
     supportsMultiShots: false,
-    tags: ['NEW', 'REFERENCES'],
+    tags: ['IMG2VID'],
   },
 
   // ============ OPENAI SORA ============
-  'sora-2': {
-    id: 'sora-2',
-    apiModelId: 'openai/sora-2',
-    name: 'OpenAI Sora 2',
-    description: 'El modelo de video de OpenAI',
+  'sora-2-pro': {
+    id: 'sora-2-pro',
+    apiModelId: 'openai/sora-2-pro',
+    name: 'Sora 2 Pro',
+    description: 'Máxima calidad de OpenAI',
     company: 'openai',
     companyName: 'OpenAI',
-    priceRange: '800-2400',
-    durationRange: '4-12s',
+    priceRange: '$0.75-1.35',
+    durationRange: '10-15s',
+    resolutions: ['720p', '1080p'],
+    defaultResolution: '1080p',
+    supportsAudio: true,
+    supportsReferences: false,
+    supportsStartEndFrames: true,
+    supportsMultiShots: false,
+    tags: ['PREMIUM', 'AUDIO'],
+  },
+  'sora-2': {
+    id: 'sora-2',
+    apiModelId: 'openai/sora-2-image-to-video',
+    name: 'Sora 2',
+    description: 'Image-to-video de OpenAI',
+    company: 'openai',
+    companyName: 'OpenAI',
+    priceRange: '$0.15',
+    durationRange: '10s',
     resolutions: ['720p'],
     defaultResolution: '720p',
     supportsAudio: true,
     supportsReferences: false,
     supportsStartEndFrames: true,
     supportsMultiShots: false,
-    tags: ['PREMIUM', 'AUDIO'],
+    tags: ['AUDIO', 'IMG2VID', 'RECOMENDADO'],
     recommended: true,
   },
 
@@ -151,13 +170,13 @@ export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
     id: 'hailuo-2.3',
     apiModelId: 'minimax/hailuo-2.3',
     name: 'Hailuo 2.3',
-    description: 'Buena calidad a precio competitivo',
+    description: 'Buena calidad, precio competitivo',
     company: 'minimax',
     companyName: 'MiniMax',
-    priceRange: '360-600',
+    priceRange: '$0.15-0.45',
     durationRange: '6-10s',
     resolutions: ['768p', '1080p'],
-    defaultResolution: '1080p',
+    defaultResolution: '768p',
     supportsAudio: false,
     supportsReferences: false,
     supportsStartEndFrames: true,
@@ -169,10 +188,10 @@ export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
     id: 'hailuo-2.3-fast',
     apiModelId: 'minimax/hailuo-2.3-fast',
     name: 'Hailuo 2.3 Fast',
-    description: 'Rápido y económico para pruebas',
+    description: 'Rápido y muy económico',
     company: 'minimax',
     companyName: 'MiniMax',
-    priceRange: '150-430',
+    priceRange: '$0.15-0.26',
     durationRange: '6-10s',
     resolutions: ['768p', '1080p'],
     defaultResolution: '768p',
@@ -191,7 +210,7 @@ export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
     description: 'Multi-shots y audio, de ByteDance',
     company: 'seedance',
     companyName: 'Seedance',
-    priceRange: '180-2640',
+    priceRange: '$1.25',
     durationRange: '4-12s',
     resolutions: ['1080p'],
     defaultResolution: '1080p',
@@ -199,17 +218,16 @@ export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
     supportsReferences: false,
     supportsStartEndFrames: true,
     supportsMultiShots: true,
-    tags: ['NEW', 'AUDIO', 'MULTI_SHOTS'],
-    recommended: true,
+    tags: ['AUDIO', 'MULTI_SHOTS'],
   },
   'seedance-1.0-fast': {
     id: 'seedance-1.0-fast',
     apiModelId: 'seedance/1.0-fast',
     name: 'Seedance 1.0 Fast',
-    description: 'Muy económico con referencias',
+    description: 'Muy económico',
     company: 'seedance',
     companyName: 'Seedance',
-    priceRange: '40-1080',
+    priceRange: '$0.30',
     durationRange: '2-12s',
     resolutions: ['480p', '1080p'],
     defaultResolution: '1080p',
@@ -228,7 +246,7 @@ export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
     description: 'Nuevo con multi-shots y audio',
     company: 'wan',
     companyName: 'Wan',
-    priceRange: '1000-4500',
+    priceRange: '$0.35-1.58',
     durationRange: '5-15s',
     resolutions: ['720p', '1080p'],
     defaultResolution: '1080p',
@@ -242,12 +260,12 @@ export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
     id: 'wan-2.5',
     apiModelId: 'wan/2.5',
     name: 'Wan 2.5',
-    description: 'Estable con audio',
+    description: '$0.06/s en 720p, $0.10/s en 1080p',
     company: 'wan',
     companyName: 'Wan',
-    priceRange: '500-3000',
+    priceRange: '$0.30-1.00',
     durationRange: '5-10s',
-    resolutions: ['480p', '1080p'],
+    resolutions: ['720p', '1080p'],
     defaultResolution: '1080p',
     supportsAudio: true,
     supportsReferences: false,
@@ -276,7 +294,7 @@ export const VIDEO_COMPANY_GROUPS: VideoCompanyGroup[] = [
     color: 'from-purple-500 to-purple-600',
     models: [
       VIDEO_MODELS['kling-2.6'],
-      VIDEO_MODELS['kling-o1'],
+      VIDEO_MODELS['kling-v25-turbo'],
     ],
   },
   {
@@ -286,6 +304,7 @@ export const VIDEO_COMPANY_GROUPS: VideoCompanyGroup[] = [
     color: 'from-emerald-500 to-emerald-600',
     models: [
       VIDEO_MODELS['sora-2'],
+      VIDEO_MODELS['sora-2-pro'],
     ],
   },
   {
