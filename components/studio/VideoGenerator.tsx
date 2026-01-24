@@ -47,22 +47,22 @@ const TAG_CONFIG: Record<string, { label: string; color: string; icon: React.Rea
   REFERENCES: { label: 'REFS', color: 'bg-orange-500/20 text-orange-400 border-orange-500/30', icon: <ImageIcon className="w-2.5 h-2.5" /> },
   MULTI_SHOTS: { label: 'MULTI-SHOT', color: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30', icon: <Layers className="w-2.5 h-2.5" /> },
   RECOMENDADO: { label: '⭐ TOP', color: 'bg-accent/20 text-accent border-accent/30', icon: null },
+  IMG2VID: { label: 'IMG→VID', color: 'bg-pink-500/20 text-pink-400 border-pink-500/30', icon: <Film className="w-2.5 h-2.5" /> },
 }
 
 export function VideoGenerator() {
-  // Model selection
-  const [selectedModel, setSelectedModel] = useState<VideoModelId>('hailuo-2.3')
+  // Model selection - default to an affordable recommended model
+  const [selectedModel, setSelectedModel] = useState<VideoModelId>('hailuo-2.3-standard')
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false)
 
-  // References
-  const [startImage, setStartImage] = useState<{ file: File; preview: string } | null>(null)
-  const [referenceImage, setReferenceImage] = useState<{ file: File; preview: string } | null>(null)
+  // Input image (for image-to-video)
+  const [inputImage, setInputImage] = useState<{ file: File; preview: string } | null>(null)
 
   // Generation options
   const [prompt, setPrompt] = useState('')
-  const [duration, setDuration] = useState<number>(5)
+  const [duration, setDuration] = useState<number>(6)
   const [aspectRatio, setAspectRatio] = useState<VideoAspectRatio>('16:9')
-  const [resolution, setResolution] = useState<string>('1080p')
+  const [resolution, setResolution] = useState<string>('768p')
   const [enableAudio, setEnableAudio] = useState(true)
 
   // State
@@ -71,8 +71,7 @@ export function VideoGenerator() {
   const [error, setError] = useState<string | null>(null)
 
   // Refs
-  const startImageRef = useRef<HTMLInputElement>(null)
-  const referenceImageRef = useRef<HTMLInputElement>(null)
+  const inputImageRef = useRef<HTMLInputElement>(null)
 
   const currentModel = VIDEO_MODELS[selectedModel]
 
@@ -83,16 +82,11 @@ export function VideoGenerator() {
     setError(null)
 
     try {
-      // Convert images to base64 if present
-      let startImageBase64: string | undefined
-      let referenceImageBase64: string | undefined
+      // Convert image to base64 if present
+      let imageBase64: string | undefined
 
-      if (startImage && currentModel.supportsStartEndFrames) {
-        startImageBase64 = await fileToBase64(startImage.file)
-      }
-
-      if (referenceImage && currentModel.supportsReferences) {
-        referenceImageBase64 = await fileToBase64(referenceImage.file)
+      if (inputImage && currentModel.supportsStartEndFrames) {
+        imageBase64 = await fileToBase64(inputImage.file)
       }
 
       const response = await fetch('/api/studio/generate-video', {
@@ -105,8 +99,7 @@ export function VideoGenerator() {
           aspectRatio,
           resolution,
           enableAudio: currentModel.supportsAudio ? enableAudio : false,
-          startImageBase64,
-          referenceImageBase64,
+          imageBase64, // Image will be uploaded to Supabase for public URL
         }),
       })
 
@@ -141,9 +134,7 @@ export function VideoGenerator() {
       const reader = new FileReader()
       reader.onload = () => {
         const result = reader.result as string
-        // Remove data URL prefix
-        const base64 = result.split(',')[1]
-        resolve(base64)
+        resolve(result) // Include full data URL, API will handle it
       }
       reader.onerror = reject
       reader.readAsDataURL(file)
@@ -197,7 +188,7 @@ export function VideoGenerator() {
                       {currentModel.name}
                     </p>
                     <p className="text-xs text-text-secondary">
-                      {currentModel.companyName} · {currentModel.priceRange} créditos
+                      {currentModel.companyName} · {currentModel.priceRange}
                     </p>
                   </div>
                 </div>
@@ -222,6 +213,11 @@ export function VideoGenerator() {
                           onClick={() => {
                             setSelectedModel(model.id)
                             setResolution(model.defaultResolution)
+                            // Reset duration to valid range
+                            const range = model.durationRange.match(/(\d+)-(\d+)/)
+                            if (range) {
+                              setDuration(parseInt(range[1]))
+                            }
                             setIsModelDropdownOpen(false)
                           }}
                           className={cn(
@@ -238,9 +234,9 @@ export function VideoGenerator() {
                             <Video className="w-4 h-4 text-white" />
                           </div>
                           <div className="flex-1 text-left">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <p className="text-sm font-medium">{model.name}</p>
-                              {model.tags?.map((tag) => {
+                              {model.tags?.slice(0, 3).map((tag) => {
                                 const config = TAG_CONFIG[tag]
                                 if (!config) return null
                                 return (
@@ -258,7 +254,7 @@ export function VideoGenerator() {
                               })}
                             </div>
                             <p className="text-xs text-text-secondary">
-                              {model.durationRange} · {model.priceRange} créditos
+                              {model.durationRange} · {model.priceRange}
                             </p>
                           </div>
                           {selectedModel === model.id && (
@@ -280,14 +276,9 @@ export function VideoGenerator() {
                 <Volume2 className="w-3 h-3" /> Audio
               </span>
             )}
-            {currentModel.supportsReferences && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs bg-orange-500/10 text-orange-400 border border-orange-500/20">
-                <ImageIcon className="w-3 h-3" /> Referencias
-              </span>
-            )}
             {currentModel.supportsStartEndFrames && (
               <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs bg-purple-500/10 text-purple-400 border border-purple-500/20">
-                <Film className="w-3 h-3" /> Start/End
+                <Film className="w-3 h-3" /> Image-to-Video
               </span>
             )}
             {currentModel.supportsMultiShots && (
@@ -297,39 +288,39 @@ export function VideoGenerator() {
             )}
           </div>
 
-          {/* Start Image (if supported) */}
+          {/* Input Image (for image-to-video) */}
           {currentModel.supportsStartEndFrames && (
             <div>
               <label className="block text-sm font-medium text-text-secondary mb-2">
-                Imagen Inicial (opcional)
+                Imagen de entrada (opcional)
               </label>
               <input
-                ref={startImageRef}
+                ref={inputImageRef}
                 type="file"
                 accept="image/*"
                 className="hidden"
-                onChange={(e) => handleFileSelect(e, setStartImage)}
+                onChange={(e) => handleFileSelect(e, setInputImage)}
               />
               <button
-                onClick={() => startImageRef.current?.click()}
+                onClick={() => inputImageRef.current?.click()}
                 className={cn(
                   'w-full flex items-center justify-center gap-3 p-4 rounded-xl border border-dashed transition-colors',
-                  startImage
+                  inputImage
                     ? 'border-accent bg-accent/5'
                     : 'border-border hover:border-accent/50'
                 )}
               >
-                {startImage ? (
+                {inputImage ? (
                   <div className="relative w-full aspect-video">
                     <img
-                      src={startImage.preview}
-                      alt="Start"
+                      src={inputImage.preview}
+                      alt="Input"
                       className="w-full h-full object-cover rounded-lg"
                     />
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
-                        setStartImage(null)
+                        setInputImage(null)
                       }}
                       className="absolute top-2 right-2 p-1.5 bg-error/90 rounded-full hover:bg-error transition-colors"
                     >
@@ -340,62 +331,14 @@ export function VideoGenerator() {
                   <>
                     <ImageIcon className="w-5 h-5 text-text-secondary" />
                     <span className="text-sm text-text-secondary">
-                      Subir imagen de inicio
+                      Subir imagen (convierte a video)
                     </span>
                   </>
                 )}
               </button>
-            </div>
-          )}
-
-          {/* Reference Image (if supported) */}
-          {currentModel.supportsReferences && (
-            <div>
-              <label className="block text-sm font-medium text-text-secondary mb-2">
-                Imagen de Referencia (estilo)
-              </label>
-              <input
-                ref={referenceImageRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => handleFileSelect(e, setReferenceImage)}
-              />
-              <button
-                onClick={() => referenceImageRef.current?.click()}
-                className={cn(
-                  'w-full flex items-center justify-center gap-3 p-4 rounded-xl border border-dashed transition-colors',
-                  referenceImage
-                    ? 'border-accent bg-accent/5'
-                    : 'border-border hover:border-accent/50'
-                )}
-              >
-                {referenceImage ? (
-                  <div className="relative w-full aspect-video">
-                    <img
-                      src={referenceImage.preview}
-                      alt="Reference"
-                      className="w-full h-full object-cover rounded-lg"
-                    />
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setReferenceImage(null)
-                      }}
-                      className="absolute top-2 right-2 p-1.5 bg-error/90 rounded-full hover:bg-error transition-colors"
-                    >
-                      <X className="w-3 h-3 text-white" />
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <ImageIcon className="w-5 h-5 text-text-secondary" />
-                    <span className="text-sm text-text-secondary">
-                      Subir imagen de referencia
-                    </span>
-                  </>
-                )}
-              </button>
+              <p className="text-xs text-text-muted mt-1">
+                Sin imagen = text-to-video. Con imagen = image-to-video.
+              </p>
             </div>
           )}
 
@@ -482,7 +425,7 @@ export function VideoGenerator() {
                     Generar Audio
                   </p>
                   <p className="text-xs text-text-secondary">
-                    El modelo generará audio ambiental
+                    Audio ambiental generado por IA
                   </p>
                 </div>
               </div>
@@ -524,7 +467,7 @@ export function VideoGenerator() {
             {isGenerating ? (
               <>
                 <Loader2 className="w-5 h-5 animate-spin" />
-                Generando...
+                Generando video...
               </>
             ) : (
               <>
