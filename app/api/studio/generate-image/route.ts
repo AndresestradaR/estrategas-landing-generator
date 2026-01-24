@@ -11,6 +11,51 @@ import {
   type ImageModelId,
 } from '@/lib/image-providers'
 
+// Upload base64 image to Supabase Storage and return public URL
+async function uploadImageToStorage(
+  supabase: any,
+  base64Data: string,
+  mimeType: string,
+  userId: string,
+  index: number
+): Promise<string | null> {
+  try {
+    // Decode base64 to buffer
+    const buffer = Buffer.from(base64Data, 'base64')
+    
+    // Determine file extension from mime type
+    const ext = mimeType.includes('png') ? 'png' : 
+                mimeType.includes('webp') ? 'webp' : 'jpg'
+    
+    // Generate unique filename
+    const filename = `studio/${userId}/${Date.now()}-${index}.${ext}`
+    
+    // Upload to Supabase Storage (landing-images bucket)
+    const { data, error } = await supabase.storage
+      .from('landing-images')
+      .upload(filename, buffer, {
+        contentType: mimeType,
+        upsert: true,
+      })
+    
+    if (error) {
+      console.error('[Studio] Storage upload error:', error)
+      return null
+    }
+    
+    // Get public URL
+    const { data: { publicUrl } } = supabase.storage
+      .from('landing-images')
+      .getPublicUrl(filename)
+    
+    console.log(`[Studio] Uploaded image to: ${publicUrl}`)
+    return publicUrl
+  } catch (err) {
+    console.error('[Studio] Upload error:', err)
+    return null
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const supabase = await createClient()
@@ -51,14 +96,14 @@ export async function POST(request: Request) {
       )
     }
 
-    // Get API keys from profile - EXACTLY like generate-landing
+    // Get API keys from profile
     const { data: profile } = await supabase
       .from('profiles')
       .select('google_api_key, openai_api_key, kie_api_key, bfl_api_key')
       .eq('id', user.id)
       .single()
 
-    // Build API keys object - EXACTLY like generate-landing
+    // Build API keys object
     const apiKeys: {
       gemini?: string
       openai?: string
@@ -82,7 +127,7 @@ export async function POST(request: Request) {
     // Get provider from model
     const selectedProvider = modelIdToProviderType(modelId)
 
-    // Validate we have the required API key - EXACTLY like generate-landing
+    // Validate we have the required API key
     const providerKeyMap: Record<ImageProviderType, keyof typeof apiKeys> = {
       gemini: 'gemini',
       openai: 'openai',
@@ -115,31 +160,48 @@ export async function POST(request: Request) {
 
     // Log reference images info for debugging
     console.log(`[Studio] Reference images received: ${productImagesBase64.length}`)
-    if (productImagesBase64.length > 0) {
-      productImagesBase64.forEach((img, i) => {
-        console.log(`[Studio] Image ${i + 1}: ${img.mimeType}, size: ${Math.round(img.data.length / 1024)}KB`)
-      })
+    console.log(`[Studio] Provider: ${selectedProvider}`)
+
+    // For Seedream, we need to upload images to get public URLs
+    // KIE.ai API requires public URLs, not base64
+    let productImageUrls: string[] | undefined
+    if (selectedProvider === 'seedream' && productImagesBase64.length > 0) {
+      console.log(`[Studio] Uploading ${productImagesBase64.length} images to storage for Seedream...`)
+      const urls: string[] = []
+      
+      for (let i = 0; i < productImagesBase64.length; i++) {
+        const img = productImagesBase64[i]
+        const url = await uploadImageToStorage(supabase, img.data, img.mimeType, user.id, i)
+        if (url) {
+          urls.push(url)
+        }
+      }
+      
+      if (urls.length > 0) {
+        productImageUrls = urls
+        console.log(`[Studio] Successfully uploaded ${urls.length} images for Seedream`)
+      }
     }
 
     // Build generation request
-    // KEY FIX: Pass the user's prompt DIRECTLY in the prompt field
-    // This way gemini.ts will use it directly instead of buildPrompt()
     const generateRequest: GenerateImageRequest = {
       provider: selectedProvider,
       modelId: modelId,
-      prompt: prompt, // DIRECT prompt from user (this is the fix!)
+      prompt: prompt,
       productImagesBase64: productImagesBase64.length > 0 ? productImagesBase64 : undefined,
+      productImageUrls: productImageUrls, // For Seedream (requires public URLs)
       aspectRatio: aspectRatio as '9:16' | '1:1' | '16:9',
     }
 
     console.log(`[Studio] Generating image with ${selectedProvider}, model: ${modelId}`)
     console.log(`[Studio] Prompt: ${prompt.substring(0, 100)}...`)
-    console.log(`[Studio] Has product images: ${!!generateRequest.productImagesBase64}`)
+    console.log(`[Studio] Has base64 images: ${!!generateRequest.productImagesBase64}`)
+    console.log(`[Studio] Has image URLs: ${!!generateRequest.productImageUrls}`)
 
-    // Generate image - EXACTLY like generate-landing
+    // Generate image
     let result = await generateImage(generateRequest, apiKeys)
 
-    // For async providers, poll for result - EXACTLY like generate-landing
+    // For async providers, poll for result
     if (result.success && result.status === 'processing' && result.taskId) {
       console.log(`[Studio] Task created: ${result.taskId}, polling for result...`)
 
