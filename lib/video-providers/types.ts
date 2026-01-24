@@ -1,21 +1,20 @@
 // Video Provider Types for Estudio IA
-// Prices from KIE.ai (January 2026)
+// Model IDs from KIE.ai (January 2026)
 
 export type VideoProviderCompany = 'google' | 'kuaishou' | 'openai' | 'minimax' | 'seedance' | 'wan'
 
 export type VideoModelId =
-  // Google Veo
+  // Google Veo (special endpoint)
   | 'veo-3.1'
   | 'veo-3-fast'
   // Kling (Kuaishou)
   | 'kling-2.6'
   | 'kling-v25-turbo'
   // OpenAI Sora
-  | 'sora-2-pro'
   | 'sora-2'
   // MiniMax Hailuo
-  | 'hailuo-2.3'
-  | 'hailuo-2.3-fast'
+  | 'hailuo-2.3-pro'
+  | 'hailuo-2.3-standard'
   // Seedance (ByteDance)
   | 'seedance-1.5-pro'
   | 'seedance-1.0-fast'
@@ -27,7 +26,8 @@ export type VideoModelTag = 'NEW' | 'FAST' | 'PREMIUM' | 'AUDIO' | 'REFERENCES' 
 
 export interface VideoModelConfig {
   id: VideoModelId
-  apiModelId: string // KIE.ai model identifier
+  apiModelId: string // KIE.ai model identifier for image-to-video
+  apiModelIdText?: string // KIE.ai model identifier for text-to-video (if different)
   name: string
   description: string
   company: VideoProviderCompany
@@ -40,6 +40,7 @@ export interface VideoModelConfig {
   supportsReferences: boolean
   supportsStartEndFrames: boolean
   supportsMultiShots: boolean
+  useVeoEndpoint?: boolean // Special endpoint for Veo models
   tags?: VideoModelTag[]
   recommended?: boolean
 }
@@ -52,49 +53,53 @@ export interface VideoCompanyGroup {
   models: VideoModelConfig[]
 }
 
-// Video Model Definitions - Prices from KIE.ai
+// Video Model Definitions - Model IDs from KIE.ai
 export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
-  // ============ GOOGLE VEO ============
+  // ============ GOOGLE VEO (Special endpoint /api/v1/veo/generate) ============
   'veo-3.1': {
     id: 'veo-3.1',
-    apiModelId: 'google/veo-3.1',
+    apiModelId: 'veo3', // Special: uses /api/v1/veo/generate
     name: 'Google Veo 3.1',
-    description: 'Flagship con referencias, audio y 4K',
+    description: 'Flagship con audio y 4K',
     company: 'google',
     companyName: 'Google',
     priceRange: '$0.55-1.10',
     durationRange: '5-10s',
-    resolutions: ['720p', '1080p'],
+    resolutions: ['1080p', '4K'],
     defaultResolution: '1080p',
     supportsAudio: true,
     supportsReferences: true,
     supportsStartEndFrames: true,
     supportsMultiShots: false,
+    useVeoEndpoint: true,
     tags: ['PREMIUM', 'AUDIO', 'REFERENCES'],
     recommended: true,
   },
   'veo-3-fast': {
     id: 'veo-3-fast',
-    apiModelId: 'google/veo-3-fast',
+    apiModelId: 'veo3_fast', // Special: uses /api/v1/veo/generate
     name: 'Veo 3 Fast',
-    description: 'Generación rápida con audio',
+    description: 'Rápido y económico con audio',
     company: 'google',
     companyName: 'Google',
     priceRange: '$0.28-0.55',
     durationRange: '5-10s',
-    resolutions: ['720p', '1080p'],
-    defaultResolution: '720p',
+    resolutions: ['1080p'],
+    defaultResolution: '1080p',
     supportsAudio: true,
-    supportsReferences: false,
+    supportsReferences: true,
     supportsStartEndFrames: true,
     supportsMultiShots: false,
-    tags: ['FAST', 'AUDIO'],
+    useVeoEndpoint: true,
+    tags: ['FAST', 'AUDIO', 'RECOMENDADO'],
+    recommended: true,
   },
 
   // ============ KLING (KUAISHOU) ============
   'kling-2.6': {
     id: 'kling-2.6',
-    apiModelId: 'kling/v2-6-pro',
+    apiModelId: 'kling-2.6/image-to-video',
+    apiModelIdText: 'kling-2.6/text-to-video',
     name: 'Kling 2.6',
     description: 'Último modelo, muy económico',
     company: 'kuaishou',
@@ -113,6 +118,7 @@ export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
   'kling-v25-turbo': {
     id: 'kling-v25-turbo',
     apiModelId: 'kling/v2-5-turbo-image-to-video-pro',
+    apiModelIdText: 'kling/v2-5-turbo-text-to-video-pro',
     name: 'Kling V2.5 Turbo',
     description: 'Image-to-video profesional',
     company: 'kuaishou',
@@ -129,14 +135,15 @@ export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
   },
 
   // ============ OPENAI SORA ============
-  'sora-2-pro': {
-    id: 'sora-2-pro',
-    apiModelId: 'openai/sora-2-pro',
-    name: 'Sora 2 Pro',
-    description: 'Máxima calidad de OpenAI',
+  'sora-2': {
+    id: 'sora-2',
+    apiModelId: 'sora-2-image-to-video',
+    apiModelIdText: 'sora-2-text-to-video',
+    name: 'OpenAI Sora 2',
+    description: 'El modelo de video de OpenAI',
     company: 'openai',
     companyName: 'OpenAI',
-    priceRange: '$0.75-1.35',
+    priceRange: '$0.15-0.75',
     durationRange: '10-15s',
     resolutions: ['720p', '1080p'],
     defaultResolution: '1080p',
@@ -144,36 +151,19 @@ export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
     supportsReferences: false,
     supportsStartEndFrames: true,
     supportsMultiShots: false,
-    tags: ['PREMIUM', 'AUDIO'],
-  },
-  'sora-2': {
-    id: 'sora-2',
-    apiModelId: 'openai/sora-2-image-to-video',
-    name: 'Sora 2',
-    description: 'Image-to-video de OpenAI',
-    company: 'openai',
-    companyName: 'OpenAI',
-    priceRange: '$0.15',
-    durationRange: '10s',
-    resolutions: ['720p'],
-    defaultResolution: '720p',
-    supportsAudio: true,
-    supportsReferences: false,
-    supportsStartEndFrames: true,
-    supportsMultiShots: false,
-    tags: ['AUDIO', 'IMG2VID', 'RECOMENDADO'],
+    tags: ['AUDIO', 'RECOMENDADO'],
     recommended: true,
   },
 
   // ============ MINIMAX HAILUO ============
-  'hailuo-2.3': {
-    id: 'hailuo-2.3',
-    apiModelId: 'minimax/hailuo-2.3',
-    name: 'Hailuo 2.3',
-    description: 'Buena calidad, precio competitivo',
+  'hailuo-2.3-pro': {
+    id: 'hailuo-2.3-pro',
+    apiModelId: 'hailuo/2-3-image-to-video-pro',
+    name: 'Hailuo 2.3 Pro',
+    description: 'Alta calidad, precio competitivo',
     company: 'minimax',
     companyName: 'MiniMax',
-    priceRange: '$0.15-0.45',
+    priceRange: '$0.22-0.45',
     durationRange: '6-10s',
     resolutions: ['768p', '1080p'],
     defaultResolution: '768p',
@@ -184,11 +174,11 @@ export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
     tags: ['RECOMENDADO'],
     recommended: true,
   },
-  'hailuo-2.3-fast': {
-    id: 'hailuo-2.3-fast',
-    apiModelId: 'minimax/hailuo-2.3-fast',
-    name: 'Hailuo 2.3 Fast',
-    description: 'Rápido y muy económico',
+  'hailuo-2.3-standard': {
+    id: 'hailuo-2.3-standard',
+    apiModelId: 'hailuo/2-3-image-to-video-standard',
+    name: 'Hailuo 2.3 Standard',
+    description: 'Económico para pruebas',
     company: 'minimax',
     companyName: 'MiniMax',
     priceRange: '$0.15-0.26',
@@ -205,7 +195,7 @@ export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
   // ============ SEEDANCE (BYTEDANCE) ============
   'seedance-1.5-pro': {
     id: 'seedance-1.5-pro',
-    apiModelId: 'seedance/1.5-pro',
+    apiModelId: 'bytedance/seedance-1.5-pro',
     name: 'Seedance 1.5 Pro',
     description: 'Multi-shots y audio, de ByteDance',
     company: 'seedance',
@@ -222,7 +212,7 @@ export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
   },
   'seedance-1.0-fast': {
     id: 'seedance-1.0-fast',
-    apiModelId: 'seedance/1.0-fast',
+    apiModelId: 'bytedance/v1-pro-fast-image-to-video',
     name: 'Seedance 1.0 Fast',
     description: 'Muy económico',
     company: 'seedance',
@@ -241,7 +231,8 @@ export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
   // ============ WAN ============
   'wan-2.6': {
     id: 'wan-2.6',
-    apiModelId: 'wan/2.6',
+    apiModelId: 'wan/2-6-image-to-video',
+    apiModelIdText: 'wan/2-6-text-to-video',
     name: 'Wan 2.6',
     description: 'Nuevo con multi-shots y audio',
     company: 'wan',
@@ -258,7 +249,8 @@ export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
   },
   'wan-2.5': {
     id: 'wan-2.5',
-    apiModelId: 'wan/2.5',
+    apiModelId: 'wan/2-5-image-to-video',
+    apiModelIdText: 'wan/2-5-text-to-video',
     name: 'Wan 2.5',
     description: '$0.06/s en 720p, $0.10/s en 1080p',
     company: 'wan',
@@ -304,7 +296,6 @@ export const VIDEO_COMPANY_GROUPS: VideoCompanyGroup[] = [
     color: 'from-emerald-500 to-emerald-600',
     models: [
       VIDEO_MODELS['sora-2'],
-      VIDEO_MODELS['sora-2-pro'],
     ],
   },
   {
@@ -313,8 +304,8 @@ export const VIDEO_COMPANY_GROUPS: VideoCompanyGroup[] = [
     icon: 'Video',
     color: 'from-orange-500 to-orange-600',
     models: [
-      VIDEO_MODELS['hailuo-2.3'],
-      VIDEO_MODELS['hailuo-2.3-fast'],
+      VIDEO_MODELS['hailuo-2.3-pro'],
+      VIDEO_MODELS['hailuo-2.3-standard'],
     ],
   },
   {
@@ -339,9 +330,17 @@ export const VIDEO_COMPANY_GROUPS: VideoCompanyGroup[] = [
   },
 ]
 
-// Helper to get API model ID
-export function getVideoApiModelId(modelId: VideoModelId): string {
-  return VIDEO_MODELS[modelId]?.apiModelId || modelId
+// Helper to get API model ID based on whether we have an image
+export function getVideoApiModelId(modelId: VideoModelId, hasImage: boolean): string {
+  const model = VIDEO_MODELS[modelId]
+  if (!model) return modelId
+  
+  // If no image and we have a text-to-video variant, use it
+  if (!hasImage && model.apiModelIdText) {
+    return model.apiModelIdText
+  }
+  
+  return model.apiModelId
 }
 
 // Generation request interface
@@ -351,9 +350,7 @@ export interface GenerateVideoRequest {
   duration?: number // seconds
   resolution?: string
   aspectRatio?: '16:9' | '9:16' | '1:1'
-  startImageBase64?: string // First frame
-  endImageBase64?: string // Last frame
-  referenceImageBase64?: string // Style reference
+  imageUrls?: string[] // Public URLs for reference images
   enableAudio?: boolean
 }
 
