@@ -113,6 +113,14 @@ export async function POST(request: Request) {
       }
     }
 
+    // Log reference images info for debugging
+    console.log(`[Studio] Reference images received: ${productImagesBase64.length}`)
+    if (productImagesBase64.length > 0) {
+      productImagesBase64.forEach((img, i) => {
+        console.log(`[Studio] Image ${i + 1}: ${img.mimeType}, size: ${Math.round(img.data.length / 1024)}KB`)
+      })
+    }
+
     // Build generation request
     // KEY FIX: Pass the user's prompt DIRECTLY in the prompt field
     // This way gemini.ts will use it directly instead of buildPrompt()
@@ -126,6 +134,7 @@ export async function POST(request: Request) {
 
     console.log(`[Studio] Generating image with ${selectedProvider}, model: ${modelId}`)
     console.log(`[Studio] Prompt: ${prompt.substring(0, 100)}...`)
+    console.log(`[Studio] Has product images: ${!!generateRequest.productImagesBase64}`)
 
     // Generate image - EXACTLY like generate-landing
     let result = await generateImage(generateRequest, apiKeys)
