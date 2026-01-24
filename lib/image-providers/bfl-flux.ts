@@ -68,6 +68,37 @@ function getFluxEndpoint(apiModelId: string): string {
   return `https://api.bfl.ai/v1/${apiModelId}`
 }
 
+// Check which parameter to use for image input based on model
+function getImageInputConfig(apiModelId: string): { 
+  paramName: string; 
+  strengthParam?: string;
+  supportsInput: boolean;
+} {
+  // FLUX 2 models use different parameters
+  if (apiModelId === 'flux-2-max' || apiModelId === 'flux-2-pro') {
+    // FLUX 2 Max/Pro use control_image for image conditioning
+    return { paramName: 'control_image', strengthParam: 'control_strength', supportsInput: true }
+  }
+  
+  if (apiModelId === 'flux-2-flex') {
+    // FLUX 2 Flex uses input_image for reference
+    return { paramName: 'input_image', strengthParam: 'strength', supportsInput: true }
+  }
+  
+  // FLUX 1 Kontext models use image_prompt
+  if (apiModelId.includes('kontext')) {
+    return { paramName: 'image_prompt', strengthParam: 'image_prompt_strength', supportsInput: true }
+  }
+  
+  // Models without image input support
+  if (apiModelId === 'flux-2-klein-4b' || apiModelId === 'flux-dev' || apiModelId === 'flux-schnell') {
+    return { paramName: '', supportsInput: false }
+  }
+  
+  // Default - try control_image
+  return { paramName: 'control_image', strengthParam: 'control_strength', supportsInput: true }
+}
+
 export const fluxProvider: ImageProvider = {
   id: 'flux',
 
@@ -82,19 +113,14 @@ export const fluxProvider: ImageProvider = {
       const apiModelId = request.modelId ? getApiModelId(request.modelId) : 'flux-2-pro'
       const endpoint = getFluxEndpoint(apiModelId)
 
+      // Get image input configuration for this model
+      const imageConfig = getImageInputConfig(apiModelId)
+
       // Build request body based on model capabilities
       const requestBody: Record<string, any> = {
         prompt: prompt,
         aspect_ratio: request.aspectRatio || '9:16',
       }
-
-      // Add image input for models that support it (Kontext, Fill, Flex, Pro, Max, Klein)
-      const supportsImageInput = apiModelId.includes('kontext') ||
-                                  apiModelId.includes('fill') ||
-                                  apiModelId.includes('flex') ||
-                                  apiModelId.includes('klein') ||
-                                  apiModelId === 'flux-2-pro' ||
-                                  apiModelId === 'flux-2-max'
 
       // Get image from template or product images
       let imageBase64: string | null = null
@@ -104,10 +130,26 @@ export const fluxProvider: ImageProvider = {
         imageBase64 = request.productImagesBase64[0].data
       }
 
-      if (supportsImageInput && imageBase64) {
-        requestBody.image_prompt = imageBase64
-        requestBody.image_prompt_strength = 0.5
+      // Add image input with correct parameter name for this model
+      if (imageConfig.supportsInput && imageBase64) {
+        // Format: data:image/jpeg;base64,{data} or just base64 depending on API
+        // BFL API expects base64 string without data URL prefix
+        const cleanBase64 = imageBase64.includes(',') 
+          ? imageBase64.split(',')[1] 
+          : imageBase64
+        
+        requestBody[imageConfig.paramName] = cleanBase64
+        
+        if (imageConfig.strengthParam) {
+          // Use higher strength (0.7) to better preserve the reference
+          requestBody[imageConfig.strengthParam] = 0.7
+        }
+
+        console.log(`[FLUX] Adding image input with param: ${imageConfig.paramName}, strength: ${imageConfig.strengthParam || 'N/A'}`)
       }
+
+      console.log(`[FLUX] Endpoint: ${endpoint}`)
+      console.log(`[FLUX] Request params:`, Object.keys(requestBody))
 
       const createResponse = await fetch(endpoint, {
         method: 'POST',
@@ -121,6 +163,7 @@ export const fluxProvider: ImageProvider = {
 
       if (!createResponse.ok) {
         const errorData = await createResponse.json().catch(() => ({}))
+        console.error(`[FLUX] API error response:`, errorData)
         throw new Error(
           `FLUX API error: ${createResponse.status} - ${JSON.stringify(errorData)}`
         )
@@ -134,6 +177,8 @@ export const fluxProvider: ImageProvider = {
         throw new Error('No request ID or polling URL returned from FLUX')
       }
 
+      console.log(`[FLUX] Task created: ${requestId || pollingUrl}`)
+
       // Return pending status with polling URL
       return {
         success: true,
@@ -142,6 +187,7 @@ export const fluxProvider: ImageProvider = {
         status: 'processing',
       }
     } catch (error: any) {
+      console.error(`[FLUX] Generation error:`, error)
       return {
         success: false,
         error: error.message || 'FLUX generation failed',
