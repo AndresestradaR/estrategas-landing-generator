@@ -63,24 +63,17 @@ Create a stunning, professional banner ready for social media advertising.`
 
 // Map our model IDs to BFL API endpoints
 function getFluxEndpoint(apiModelId: string): string {
-  // The apiModelId maps directly to the endpoint path
-  // e.g., 'flux-2-pro' -> '/v1/flux-2-pro'
   return `https://api.bfl.ai/v1/${apiModelId}`
 }
 
 // Check which models support image input
-// FLUX 2 models use input_image for image editing
-// FLUX 2 Klein (text-only) does NOT support image input
 function supportsImageInput(apiModelId: string): boolean {
-  // Text-only models
   if (apiModelId === 'flux-2-klein-4b' || apiModelId === 'flux-2-klein-9b') {
     return false
   }
-  // All other FLUX 2 models support input_image
   if (apiModelId.startsWith('flux-2-')) {
     return true
   }
-  // FLUX 1 Kontext models support image_prompt
   if (apiModelId.includes('kontext')) {
     return true
   }
@@ -95,16 +88,68 @@ function cleanBase64(data: string): string {
   return data
 }
 
+/**
+ * Enhance prompt to reference input images for FLUX 2 multi-reference editing.
+ * FLUX 2 understands natural language references like "the product from image 1"
+ * or explicit indexing like "image 1", "image 2", etc.
+ * 
+ * This function modifies the prompt to explicitly reference uploaded images
+ * so FLUX knows to incorporate them into the generation.
+ */
+function enhancePromptWithImageReferences(prompt: string, imageCount: number): string {
+  if (imageCount === 0) return prompt
+  
+  // Check if prompt already references images (common patterns)
+  const hasImageRef = /image\s*\d|imagen\s*\d|@img\d|from\s+image|de\s+la\s+imagen/i.test(prompt)
+  if (hasImageRef) return prompt
+  
+  // Check for common product-related keywords that should reference the image
+  const productKeywords = [
+    'producto', 'product', 
+    'crema', 'cream', 
+    'botella', 'bottle',
+    'frasco', 'jar',
+    'caja', 'box',
+    'paquete', 'package',
+    'artículo', 'article', 'item',
+    'el producto', 'the product',
+    'con el producto', 'with the product',
+    'sosteniendo', 'holding',
+    'mostrando', 'showing',
+  ]
+  
+  // Check if prompt mentions product-related terms
+  const mentionsProduct = productKeywords.some(keyword => 
+    prompt.toLowerCase().includes(keyword.toLowerCase())
+  )
+  
+  if (mentionsProduct) {
+    // Add instruction to use the exact product from the reference image
+    // FLUX 2 understands "the product from image 1" syntax
+    const imageRefs = Array.from({ length: imageCount }, (_, i) => `image ${i + 1}`).join(', ')
+    
+    return `${prompt}
+
+IMPORTANT: Use the EXACT product shown in ${imageRefs} - preserve its appearance, label, packaging, and branding exactly as shown in the reference image(s). The product must be identical to the one in the input image.`
+  }
+  
+  // For other prompts, add a general reference
+  if (imageCount === 1) {
+    return `${prompt}
+
+Reference the content from image 1 in this generation, preserving its key elements and appearance.`
+  }
+  
+  return `${prompt}
+
+Reference the content from the ${imageCount} input images in this generation.`
+}
+
 export const fluxProvider: ImageProvider = {
   id: 'flux',
 
   async generate(request: GenerateImageRequest, apiKey: string): Promise<GenerateImageResult> {
     try {
-      // Use direct prompt if provided (Studio IA), otherwise build landing prompt
-      const prompt = request.prompt && request.prompt.trim()
-        ? request.prompt
-        : buildPrompt(request)
-
       // Get the API model ID from the selected model (default to flux-2-pro)
       const apiModelId = request.modelId ? getApiModelId(request.modelId) : 'flux-2-pro'
       const endpoint = getFluxEndpoint(apiModelId)
@@ -120,14 +165,24 @@ export const fluxProvider: ImageProvider = {
         }
       }
 
+      // Build prompt - use direct prompt if provided (Studio IA), otherwise build landing prompt
+      let prompt = request.prompt && request.prompt.trim()
+        ? request.prompt
+        : buildPrompt(request)
+
+      // Enhance prompt with image references if we have images and model supports them
+      if (supportsImageInput(apiModelId) && images.length > 0) {
+        prompt = enhancePromptWithImageReferences(prompt, images.length)
+        console.log(`[FLUX] Enhanced prompt with ${images.length} image reference(s)`)
+      }
+
       // Build request body based on model capabilities
       const requestBody: Record<string, any> = {
         prompt: prompt,
+        output_format: 'jpeg',
       }
 
-      // FLUX 2 models (Pro, Max, Flex) use input_image for image editing
-      // According to BFL docs: input_image is REQUIRED for image editing
-      // input_image_2 through input_image_8 for additional references
+      // FLUX 2 models (Pro, Max, Flex) use input_image for multi-reference editing
       if (supportsImageInput(apiModelId) && images.length > 0) {
         // First image is the main input_image
         requestBody.input_image = images[0]
@@ -138,22 +193,16 @@ export const fluxProvider: ImageProvider = {
         }
         
         console.log(`[FLUX] Added ${images.length} input image(s) to request`)
-        
-        // For image editing, dimensions come from input image
-        // We can optionally set width/height to override
       } else {
         // For text-to-image (no input image), use aspect_ratio
         requestBody.aspect_ratio = request.aspectRatio || '9:16'
         console.log(`[FLUX] Text-to-image mode with aspect_ratio: ${requestBody.aspect_ratio}`)
       }
 
-      // Output format
-      requestBody.output_format = 'jpeg'
-
       console.log(`[FLUX] Endpoint: ${endpoint}`)
       console.log(`[FLUX] Model: ${apiModelId}`)
       console.log(`[FLUX] Has input images: ${images.length > 0}`)
-      console.log(`[FLUX] Prompt: ${prompt.substring(0, 100)}...`)
+      console.log(`[FLUX] Final prompt: ${prompt.substring(0, 200)}...`)
 
       const createResponse = await fetch(endpoint, {
         method: 'POST',
@@ -182,9 +231,10 @@ export const fluxProvider: ImageProvider = {
       }
 
       console.log(`[FLUX] Task created: ${requestId || pollingUrl}`)
-      console.log(`[FLUX] Cost: ${createData.cost} credits`)
+      if (createData.cost) {
+        console.log(`[FLUX] Cost: ${createData.cost} credits`)
+      }
 
-      // Return pending status with polling URL
       return {
         success: true,
         provider: 'flux',
@@ -203,7 +253,6 @@ export const fluxProvider: ImageProvider = {
 
   async checkStatus(pollingUrl: string, apiKey: string): Promise<GenerateImageResult> {
     try {
-      // If pollingUrl is not a full URL, construct it
       const url = pollingUrl.startsWith('http')
         ? pollingUrl
         : `https://api.bfl.ai/v1/get_result?id=${pollingUrl}`
@@ -222,7 +271,6 @@ export const fluxProvider: ImageProvider = {
 
       const data = await response.json()
 
-      // Check status
       if (data.status === 'Pending' || data.status === 'Processing' || data.status === 'Queued') {
         return {
           success: true,
@@ -240,11 +288,9 @@ export const fluxProvider: ImageProvider = {
         }
       }
 
-      // Ready - get the image
       if (data.status === 'Ready' && data.result?.sample) {
         const imageUrl = data.result.sample
 
-        // Fetch the image and convert to base64
         const imageResponse = await fetch(imageUrl)
         const imageBuffer = await imageResponse.arrayBuffer()
         const imageBase64 = Buffer.from(imageBuffer).toString('base64')
