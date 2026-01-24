@@ -6,7 +6,6 @@ import {
   IMAGE_COMPANY_GROUPS,
   IMAGE_MODELS,
   ImageModelId,
-  ImageModelConfig,
 } from '@/lib/image-providers/types'
 import {
   Sparkles,
@@ -23,6 +22,8 @@ import {
   Loader2,
   X,
   Check,
+  Type,
+  Image as ImageLucide,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -35,6 +36,7 @@ const COMPANY_ICONS: Record<string, React.ElementType> = {
 
 type AspectRatio = '9:16' | '16:9' | '1:1'
 type Quality = '1k' | '2k'
+type GenerationMode = 'text' | 'image'
 
 interface GeneratedImage {
   id: string
@@ -43,12 +45,29 @@ interface GeneratedImage {
   model: string
   timestamp: Date
   isFavorite: boolean
+  aspectRatio: AspectRatio // Store the aspect ratio used
+}
+
+// Get CSS aspect ratio class based on ratio
+function getAspectRatioClass(ratio: AspectRatio): string {
+  switch (ratio) {
+    case '9:16':
+      return 'aspect-[9/16]'
+    case '16:9':
+      return 'aspect-[16/9]'
+    case '1:1':
+    default:
+      return 'aspect-square'
+  }
 }
 
 export function ImageGenerator() {
   // Model selection
   const [selectedModel, setSelectedModel] = useState<ImageModelId>('gemini-2.5-flash')
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false)
+
+  // Generation mode (text-only or with image references)
+  const [generationMode, setGenerationMode] = useState<GenerationMode>('text')
 
   // References
   const [styleRef, setStyleRef] = useState<File | null>(null)
@@ -71,6 +90,23 @@ export function ImageGenerator() {
   const uploadInputRef = useRef<HTMLInputElement>(null)
 
   const currentModel = IMAGE_MODELS[selectedModel]
+  
+  // Check if current model supports image input
+  const supportsImageInput = currentModel.supportsImageInput
+
+  // When model changes, reset mode if needed
+  const handleModelChange = (modelId: ImageModelId) => {
+    setSelectedModel(modelId)
+    setIsModelDropdownOpen(false)
+    
+    // If new model doesn't support images, switch to text mode and clear refs
+    if (!IMAGE_MODELS[modelId].supportsImageInput) {
+      setGenerationMode('text')
+      setStyleRef(null)
+      setCharacterRef(null)
+      setUploadedImages([])
+    }
+  }
 
   const handleGenerate = async () => {
     if (!prompt.trim()) {
@@ -81,7 +117,7 @@ export function ImageGenerator() {
     setIsGenerating(true)
 
     try {
-      // Convert reference images to base64
+      // Convert reference images to base64 (only if mode is 'image' and model supports it)
       const referenceImages: { data: string; mimeType: string }[] = []
 
       const toBase64 = (file: File): Promise<{ data: string; mimeType: string }> => {
@@ -96,14 +132,16 @@ export function ImageGenerator() {
         })
       }
 
-      if (styleRef) {
-        referenceImages.push(await toBase64(styleRef))
-      }
-      if (characterRef) {
-        referenceImages.push(await toBase64(characterRef))
-      }
-      for (const img of uploadedImages) {
-        referenceImages.push(await toBase64(img))
+      if (generationMode === 'image' && supportsImageInput) {
+        if (styleRef) {
+          referenceImages.push(await toBase64(styleRef))
+        }
+        if (characterRef) {
+          referenceImages.push(await toBase64(characterRef))
+        }
+        for (const img of uploadedImages) {
+          referenceImages.push(await toBase64(img))
+        }
       }
 
       const response = await fetch('/api/studio/generate-image', {
@@ -138,6 +176,7 @@ export function ImageGenerator() {
           model: currentModel.name,
           timestamp: new Date(),
           isFavorite: false,
+          aspectRatio, // Save the aspect ratio used
         }
         setGeneratedImages((prev) => [newImage, ...prev])
         toast.success('Imagen generada exitosamente')
@@ -173,6 +212,7 @@ export function ImageGenerator() {
             model: currentModel.name,
             timestamp: new Date(),
             isFavorite: false,
+            aspectRatio, // Save the aspect ratio used
           }
           setGeneratedImages((prev) => [newImage, ...prev])
           toast.success('Imagen generada exitosamente')
@@ -280,10 +320,7 @@ export function ImageGenerator() {
                       {group.models.map((model) => (
                         <button
                           key={model.id}
-                          onClick={() => {
-                            setSelectedModel(model.id)
-                            setIsModelDropdownOpen(false)
-                          }}
+                          onClick={() => handleModelChange(model.id)}
                           className={cn(
                             'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors',
                             selectedModel === model.id
@@ -313,10 +350,11 @@ export function ImageGenerator() {
                                     tag === 'RECOMENDADO' && 'bg-accent/20 text-accent',
                                     tag === 'NEW' && 'bg-blue-500/20 text-blue-400',
                                     tag === 'FAST' && 'bg-yellow-500/20 text-yellow-400',
-                                    tag === 'PREMIUM' && 'bg-purple-500/20 text-purple-400'
+                                    tag === 'PREMIUM' && 'bg-purple-500/20 text-purple-400',
+                                    tag === 'TEXT_ONLY' && 'bg-gray-500/20 text-gray-400'
                                   )}
                                 >
-                                  {tag}
+                                  {tag === 'TEXT_ONLY' ? 'SOLO TEXTO' : tag}
                                 </span>
                               ))}
                             </div>
@@ -334,122 +372,159 @@ export function ImageGenerator() {
             </div>
           </div>
 
-          {/* References */}
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-2">
-              Referencias
-            </label>
-            <div className="flex gap-2">
-              <input
-                ref={styleInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => handleFileSelect(e, setStyleRef)}
-              />
-              <input
-                ref={characterInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => handleFileSelect(e, setCharacterRef)}
-              />
-              <input
-                ref={uploadInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={handleMultipleFileSelect}
-              />
-
-              <button
-                onClick={() => styleInputRef.current?.click()}
-                className={cn(
-                  'flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-dashed transition-colors',
-                  styleRef
-                    ? 'border-accent bg-accent/10 text-accent'
-                    : 'border-border hover:border-accent/50 text-text-secondary hover:text-text-primary'
-                )}
-              >
-                <Palette className="w-4 h-4" />
-                <span className="text-sm">Estilo</span>
-                {styleRef && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setStyleRef(null)
-                    }}
-                    className="ml-1"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                )}
-              </button>
-
-              <button
-                onClick={() => characterInputRef.current?.click()}
-                className={cn(
-                  'flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-dashed transition-colors',
-                  characterRef
-                    ? 'border-accent bg-accent/10 text-accent'
-                    : 'border-border hover:border-accent/50 text-text-secondary hover:text-text-primary'
-                )}
-              >
-                <User className="w-4 h-4" />
-                <span className="text-sm">Personaje</span>
-                {characterRef && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setCharacterRef(null)
-                    }}
-                    className="ml-1"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                )}
-              </button>
-
-              <button
-                onClick={() => uploadInputRef.current?.click()}
-                className={cn(
-                  'flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-dashed transition-colors',
-                  uploadedImages.length > 0
-                    ? 'border-accent bg-accent/10 text-accent'
-                    : 'border-border hover:border-accent/50 text-text-secondary hover:text-text-primary'
-                )}
-              >
-                <Upload className="w-4 h-4" />
-                <span className="text-sm">
-                  {uploadedImages.length > 0 ? `(${uploadedImages.length})` : 'Subir'}
-                </span>
-              </button>
-            </div>
-
-            {/* Preview uploaded images */}
-            {uploadedImages.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-3">
-                {uploadedImages.map((file, i) => (
-                  <div key={i} className="relative group">
-                    <img
-                      src={URL.createObjectURL(file)}
-                      alt={`Upload ${i + 1}`}
-                      className="w-12 h-12 object-cover rounded-lg"
-                    />
-                    <button
-                      onClick={() =>
-                        setUploadedImages((prev) => prev.filter((_, idx) => idx !== i))
-                      }
-                      className="absolute -top-1 -right-1 w-4 h-4 bg-error rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <X className="w-3 h-3 text-white" />
-                    </button>
-                  </div>
-                ))}
+          {/* Generation Mode Tabs - Only show if model supports image input */}
+          {supportsImageInput && (
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-2">
+                Modo de generacion
+              </label>
+              <div className="flex gap-2 p-1 bg-surface-elevated rounded-xl border border-border">
+                <button
+                  onClick={() => setGenerationMode('text')}
+                  className={cn(
+                    'flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all',
+                    generationMode === 'text'
+                      ? 'bg-accent text-background'
+                      : 'text-text-secondary hover:text-text-primary hover:bg-border/50'
+                  )}
+                >
+                  <Type className="w-4 h-4" />
+                  Texto a Imagen
+                </button>
+                <button
+                  onClick={() => setGenerationMode('image')}
+                  className={cn(
+                    'flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all',
+                    generationMode === 'image'
+                      ? 'bg-accent text-background'
+                      : 'text-text-secondary hover:text-text-primary hover:bg-border/50'
+                  )}
+                >
+                  <ImageLucide className="w-4 h-4" />
+                  Imagen a Imagen
+                </button>
               </div>
-            )}
-          </div>
+            </div>
+          )}
+
+          {/* References - Only show if model supports image input AND mode is 'image' */}
+          {supportsImageInput && generationMode === 'image' && (
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-2">
+                Referencias
+              </label>
+              <div className="flex gap-2">
+                <input
+                  ref={styleInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => handleFileSelect(e, setStyleRef)}
+                />
+                <input
+                  ref={characterInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => handleFileSelect(e, setCharacterRef)}
+                />
+                <input
+                  ref={uploadInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={handleMultipleFileSelect}
+                />
+
+                <button
+                  onClick={() => styleInputRef.current?.click()}
+                  className={cn(
+                    'flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-dashed transition-colors',
+                    styleRef
+                      ? 'border-accent bg-accent/10 text-accent'
+                      : 'border-border hover:border-accent/50 text-text-secondary hover:text-text-primary'
+                  )}
+                >
+                  <Palette className="w-4 h-4" />
+                  <span className="text-sm">Estilo</span>
+                  {styleRef && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setStyleRef(null)
+                      }}
+                      className="ml-1"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </button>
+
+                <button
+                  onClick={() => characterInputRef.current?.click()}
+                  className={cn(
+                    'flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-dashed transition-colors',
+                    characterRef
+                      ? 'border-accent bg-accent/10 text-accent'
+                      : 'border-border hover:border-accent/50 text-text-secondary hover:text-text-primary'
+                  )}
+                >
+                  <User className="w-4 h-4" />
+                  <span className="text-sm">Personaje</span>
+                  {characterRef && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setCharacterRef(null)
+                      }}
+                      className="ml-1"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </button>
+
+                <button
+                  onClick={() => uploadInputRef.current?.click()}
+                  className={cn(
+                    'flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-dashed transition-colors',
+                    uploadedImages.length > 0
+                      ? 'border-accent bg-accent/10 text-accent'
+                      : 'border-border hover:border-accent/50 text-text-secondary hover:text-text-primary'
+                  )}
+                >
+                  <Upload className="w-4 h-4" />
+                  <span className="text-sm">
+                    {uploadedImages.length > 0 ? `(${uploadedImages.length})` : 'Subir'}
+                  </span>
+                </button>
+              </div>
+
+              {/* Preview uploaded images */}
+              {uploadedImages.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {uploadedImages.map((file, i) => (
+                    <div key={i} className="relative group">
+                      <img
+                        src={URL.createObjectURL(file)}
+                        alt={`Upload ${i + 1}`}
+                        className="w-12 h-12 object-cover rounded-lg"
+                      />
+                      <button
+                        onClick={() =>
+                          setUploadedImages((prev) => prev.filter((_, idx) => idx !== i))
+                        }
+                        className="absolute -top-1 -right-1 w-4 h-4 bg-error rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-3 h-3 text-white" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Prompt */}
           <div>
@@ -568,7 +643,10 @@ export function ImageGenerator() {
               {generatedImages.map((image) => (
                 <div
                   key={image.id}
-                  className="group relative aspect-square rounded-xl overflow-hidden bg-surface-elevated"
+                  className={cn(
+                    'group relative rounded-xl overflow-hidden bg-surface-elevated',
+                    getAspectRatioClass(image.aspectRatio)
+                  )}
                 >
                   <img
                     src={image.url}
