@@ -1,4 +1,5 @@
 // KIE.ai Video Provider - All video models go through KIE.ai API
+// Docs: https://docs.kie.ai
 
 import {
   VideoModelId,
@@ -8,9 +9,15 @@ import {
   getVideoApiModelId,
 } from './types'
 
+const KIE_API_BASE = 'https://api.kie.ai/api/v1'
+
 /**
  * Generate video using KIE.ai API
- * All video models (Veo, Kling, Sora, Hailuo, Runway) are accessed through KIE.ai
+ * 
+ * Important:
+ * - Veo models use different endpoint: /api/v1/veo/generate
+ * - Other models use: /api/v1/jobs/createTask
+ * - Images must be public URLs (not base64)
  */
 export async function generateVideo(
   request: GenerateVideoRequest,
@@ -22,107 +29,20 @@ export async function generateVideo(
       throw new Error(`Unknown video model: ${request.modelId}`)
     }
 
-    const apiModelId = getVideoApiModelId(request.modelId)
-    
-    // Build input based on model capabilities
-    const input: Record<string, any> = {
-      prompt: request.prompt,
+    const hasImage = request.imageUrls && request.imageUrls.length > 0
+    const apiModelId = getVideoApiModelId(request.modelId, hasImage)
+
+    console.log(`[Video] Model: ${request.modelId} -> API model: ${apiModelId}`)
+    console.log(`[Video] Has image: ${hasImage}`)
+
+    // Veo models use different endpoint
+    if (modelConfig.useVeoEndpoint) {
+      return await generateVeoVideo(request, apiKey, apiModelId)
     }
 
-    // Duration
-    if (request.duration) {
-      input.duration = request.duration
-    }
+    // Standard models use createTask endpoint
+    return await generateStandardVideo(request, apiKey, apiModelId)
 
-    // Resolution
-    if (request.resolution) {
-      input.resolution = request.resolution
-    } else {
-      input.resolution = modelConfig.defaultResolution
-    }
-
-    // Aspect ratio
-    if (request.aspectRatio) {
-      input.aspect_ratio = request.aspectRatio
-    }
-
-    // Start frame (image-to-video)
-    if (request.startImageBase64 && modelConfig.supportsStartEndFrames) {
-      input.start_image = request.startImageBase64
-    }
-
-    // End frame
-    if (request.endImageBase64 && modelConfig.supportsStartEndFrames) {
-      input.end_image = request.endImageBase64
-    }
-
-    // Reference image for style
-    if (request.referenceImageBase64 && modelConfig.supportsReferences) {
-      input.reference_image = request.referenceImageBase64
-    }
-
-    // Audio generation
-    if (request.enableAudio !== undefined && modelConfig.supportsAudio) {
-      input.enable_audio = request.enableAudio
-    }
-
-    console.log(`[Video] Creating task with model: ${apiModelId}`)
-    console.log(`[Video] Input:`, JSON.stringify({
-      ...input,
-      prompt: input.prompt?.substring(0, 50) + '...',
-      start_image: input.start_image ? '[base64]' : undefined,
-      end_image: input.end_image ? '[base64]' : undefined,
-      reference_image: input.reference_image ? '[base64]' : undefined,
-    }))
-
-    // Create task via KIE.ai API
-    const createResponse = await fetch('https://api.kie.ai/api/v1/jobs/createTask', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: apiModelId,
-        input: input,
-      }),
-    })
-
-    const responseText = await createResponse.text()
-    console.log('[Video] Response status:', createResponse.status)
-    console.log('[Video] Response body:', responseText.substring(0, 500))
-
-    let createData: any
-    try {
-      createData = JSON.parse(responseText)
-    } catch (e) {
-      throw new Error(`KIE API returned invalid JSON: ${responseText.substring(0, 200)}`)
-    }
-
-    if (!createResponse.ok) {
-      const errorMsg = createData.message || createData.msg || createData.error || JSON.stringify(createData)
-      throw new Error(`KIE API error (${createResponse.status}): ${errorMsg}`)
-    }
-
-    // KIE.ai response structure: { code: 0/200, data: { taskId: "..." } }
-    if (createData.code !== 200 && createData.code !== 0) {
-      throw new Error(`KIE API error: ${createData.msg || JSON.stringify(createData)}`)
-    }
-
-    const taskId = createData.data?.taskId || createData.taskId || createData.data?.task_id
-
-    if (!taskId) {
-      throw new Error(`No taskId in response: ${JSON.stringify(createData).substring(0, 300)}`)
-    }
-
-    console.log('[Video] Task created:', taskId)
-
-    return {
-      success: true,
-      taskId: taskId,
-      status: 'processing',
-      provider: 'kie',
-    }
   } catch (error: any) {
     console.error('[Video] Error:', error.message)
     return {
@@ -134,6 +54,167 @@ export async function generateVideo(
 }
 
 /**
+ * Generate video with Veo 3.1 (special endpoint)
+ * Endpoint: POST /api/v1/veo/generate
+ */
+async function generateVeoVideo(
+  request: GenerateVideoRequest,
+  apiKey: string,
+  model: string
+): Promise<GenerateVideoResult> {
+  const body: Record<string, any> = {
+    model: model, // veo3 or veo3_fast
+    prompt: request.prompt,
+    aspect_ratio: request.aspectRatio || '16:9',
+    enableTranslation: true,
+  }
+
+  // Image-to-video
+  if (request.imageUrls && request.imageUrls.length > 0) {
+    body.imageUrls = request.imageUrls
+    // If 2 images: first frame and last frame
+    if (request.imageUrls.length === 2) {
+      body.generationType = 'FIRST_AND_LAST_FRAMES_2_VIDEO'
+    }
+  } else {
+    body.generationType = 'TEXT_2_VIDEO'
+  }
+
+  console.log('[Video/Veo] Request:', JSON.stringify({
+    ...body,
+    prompt: body.prompt?.substring(0, 50) + '...',
+    imageUrls: body.imageUrls ? `[${body.imageUrls.length} URLs]` : undefined,
+  }))
+
+  const response = await fetch(`${KIE_API_BASE}/veo/generate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(body),
+  })
+
+  const responseText = await response.text()
+  console.log('[Video/Veo] Response:', response.status, responseText.substring(0, 500))
+
+  let data: any
+  try {
+    data = JSON.parse(responseText)
+  } catch (e) {
+    throw new Error(`Invalid JSON response: ${responseText.substring(0, 200)}`)
+  }
+
+  if (data.code !== 200) {
+    throw new Error(`Veo API error: ${data.msg || data.message || JSON.stringify(data)}`)
+  }
+
+  const taskId = data.data?.taskId
+  if (!taskId) {
+    throw new Error(`No taskId in Veo response`)
+  }
+
+  return {
+    success: true,
+    taskId: taskId,
+    status: 'processing',
+    provider: 'kie-veo',
+  }
+}
+
+/**
+ * Generate video with standard models (Sora, Kling, Hailuo, Wan, Seedance)
+ * Endpoint: POST /api/v1/jobs/createTask
+ */
+async function generateStandardVideo(
+  request: GenerateVideoRequest,
+  apiKey: string,
+  model: string
+): Promise<GenerateVideoResult> {
+  const modelConfig = VIDEO_MODELS[request.modelId]
+
+  // Build input object
+  const input: Record<string, any> = {
+    prompt: request.prompt,
+  }
+
+  // Image URLs (must be public)
+  if (request.imageUrls && request.imageUrls.length > 0) {
+    input.image_urls = request.imageUrls
+  }
+
+  // Aspect ratio
+  if (request.aspectRatio) {
+    input.aspect_ratio = request.aspectRatio === '9:16' ? 'portrait' : 'landscape'
+  }
+
+  // Duration - model specific
+  if (request.duration) {
+    // Sora uses n_frames
+    if (request.modelId === 'sora-2') {
+      input.n_frames = request.duration.toString()
+    } else {
+      input.duration = request.duration
+    }
+  }
+
+  // Resolution
+  if (request.resolution) {
+    input.resolution = request.resolution
+  }
+
+  // Watermark removal (if available)
+  input.remove_watermark = true
+
+  console.log('[Video] Request:', JSON.stringify({
+    model,
+    input: {
+      ...input,
+      prompt: input.prompt?.substring(0, 50) + '...',
+      image_urls: input.image_urls ? `[${input.image_urls.length} URLs]` : undefined,
+    },
+  }))
+
+  const response = await fetch(`${KIE_API_BASE}/jobs/createTask`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: model,
+      input: input,
+    }),
+  })
+
+  const responseText = await response.text()
+  console.log('[Video] Response:', response.status, responseText.substring(0, 500))
+
+  let data: any
+  try {
+    data = JSON.parse(responseText)
+  } catch (e) {
+    throw new Error(`Invalid JSON: ${responseText.substring(0, 200)}`)
+  }
+
+  if (data.code !== 200 && data.code !== 0) {
+    throw new Error(`KIE API error: ${data.msg || data.message || JSON.stringify(data)}`)
+  }
+
+  const taskId = data.data?.taskId || data.taskId
+  if (!taskId) {
+    throw new Error(`No taskId in response`)
+  }
+
+  return {
+    success: true,
+    taskId: taskId,
+    status: 'processing',
+    provider: 'kie',
+  }
+}
+
+/**
  * Check video generation status
  */
 export async function checkVideoStatus(
@@ -141,7 +222,7 @@ export async function checkVideoStatus(
   apiKey: string
 ): Promise<GenerateVideoResult> {
   try {
-    const response = await fetch(`https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${taskId}`, {
+    const response = await fetch(`${KIE_API_BASE}/jobs/recordInfo?taskId=${taskId}`, {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -158,7 +239,8 @@ export async function checkVideoStatus(
 
     console.log('[Video] Status:', state)
 
-    if (state === 'waiting' || state === 'queuing' || state === 'generating') {
+    // Processing states
+    if (['waiting', 'queuing', 'generating', 'processing'].includes(state)) {
       return {
         success: true,
         taskId: taskId,
@@ -167,7 +249,8 @@ export async function checkVideoStatus(
       }
     }
 
-    if (state === 'fail') {
+    // Failed
+    if (state === 'fail' || state === 'failed') {
       return {
         success: false,
         error: taskData.failMsg || taskData.failCode || 'Video generation failed',
@@ -175,20 +258,22 @@ export async function checkVideoStatus(
       }
     }
 
+    // Success - extract video URL
     if (state === 'success') {
       let videoUrl: string | undefined
-      
+
       if (taskData.resultJson) {
         try {
-          const resultData = typeof taskData.resultJson === 'string' 
-            ? JSON.parse(taskData.resultJson) 
+          const result = typeof taskData.resultJson === 'string'
+            ? JSON.parse(taskData.resultJson)
             : taskData.resultJson
-          
-          // Video URL can be in different fields
-          videoUrl = resultData.videoUrl || 
-                     resultData.video_url || 
-                     resultData.resultUrls?.[0] ||
-                     resultData.videos?.[0]
+
+          // Different models return URL in different fields
+          videoUrl = result.videoUrl ||
+                     result.video_url ||
+                     result.resultUrls?.[0] ||
+                     result.videos?.[0] ||
+                     result.url
         } catch (e) {
           console.error('[Video] Failed to parse resultJson:', e)
         }
@@ -206,7 +291,7 @@ export async function checkVideoStatus(
 
     return {
       success: false,
-      error: `Unknown status: ${JSON.stringify(taskData).substring(0, 200)}`,
+      error: `Unknown status: ${state}`,
       provider: 'kie',
     }
   } catch (error: any) {
@@ -230,14 +315,13 @@ export async function pollForVideoResult(
     timeoutMs?: number
   } = {}
 ): Promise<GenerateVideoResult> {
-  const maxAttempts = options.maxAttempts || 300 // 5 minutes default
-  const intervalMs = options.intervalMs || 2000 // 2 seconds
-  const timeoutMs = options.timeoutMs || 600000 // 10 minutes max
+  const maxAttempts = options.maxAttempts || 300
+  const intervalMs = options.intervalMs || 3000 // 3 seconds
+  const timeoutMs = options.timeoutMs || 600000 // 10 minutes
 
   const startTime = Date.now()
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    // Check timeout
     if (Date.now() - startTime > timeoutMs) {
       return {
         success: false,
@@ -252,7 +336,7 @@ export async function pollForVideoResult(
       return result
     }
 
-    // Still processing, wait and retry
+    // Still processing
     await new Promise((resolve) => setTimeout(resolve, intervalMs))
   }
 
