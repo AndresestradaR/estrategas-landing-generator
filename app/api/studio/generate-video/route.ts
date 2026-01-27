@@ -99,6 +99,14 @@ export async function POST(request: Request) {
       )
     }
 
+    // Check if model requires an image but none was provided
+    if (modelConfig.requiresImage && !imageBase64) {
+      return NextResponse.json({
+        success: false,
+        error: `${modelConfig.name} solo soporta image-to-video. Por favor sube una imagen o usa otro modelo como Kling 2.6, Veo 3, Sora 2 o Wan.`,
+      }, { status: 400 })
+    }
+
     // Get KIE API key from profile
     const { data: profile } = await supabase
       .from('profiles')
