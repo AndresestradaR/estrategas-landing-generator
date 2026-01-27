@@ -66,6 +66,7 @@ export async function generateVideo(
 
     console.log(`[Video] Model: ${request.modelId} -> API model: ${apiModelId}`)
     console.log(`[Video] Has image: ${hasImage}`)
+    console.log(`[Video] Request imageUrls:`, request.imageUrls)
 
     // Veo models use different endpoint
     if (modelConfig.useVeoEndpoint) {
@@ -219,17 +220,22 @@ async function generateStandardVideo(
   const isSeedance10 = request.modelId === 'seedance-1.0-fast'
   const isSeedance = isSeedance15 || isSeedance10
 
+  console.log(`[Video] Model detection: isWan=${isWan}, isKling26=${isKling26}, isSora=${isSora}, isHailuo=${isHailuo}, isSeedance15=${isSeedance15}, isSeedance10=${isSeedance10}`)
+
   // Image URLs - DIFFERENT MODELS USE DIFFERENT FIELD NAMES!
   if (request.imageUrls && request.imageUrls.length > 0) {
     if (isKling26 || isSora || isWan) {
       // Kling 2.6, Sora 2, and Wan use image_urls (plural array)
       input.image_urls = request.imageUrls
+      console.log(`[Video] Using image_urls (array) for ${request.modelId}`)
     } else if (isSeedance15) {
       // Seedance 1.5 Pro uses input_urls (array)
       input.input_urls = request.imageUrls
+      console.log(`[Video] Using input_urls (array) for ${request.modelId}`)
     } else if (isSeedance10) {
       // Seedance 1.0 Fast uses image_url (singular string)
       input.image_url = request.imageUrls[0]
+      console.log(`[Video] Using image_url (singular) for ${request.modelId}`)
     } else if (isKlingV25) {
       // Kling v2.5 Turbo uses image_url (SINGULAR string!)
       input.image_url = request.imageUrls[0]
@@ -237,12 +243,15 @@ async function generateStandardVideo(
       if (request.imageUrls.length > 1) {
         input.tail_image_url = request.imageUrls[1]
       }
+      console.log(`[Video] Using image_url (singular) for ${request.modelId}`)
     } else if (isHailuo) {
       // Hailuo uses image_url (singular)
       input.image_url = request.imageUrls[0]
+      console.log(`[Video] Using image_url (singular) for ${request.modelId}`)
     } else {
       // Fallback - use singular image_url
       input.image_url = request.imageUrls[0]
+      console.log(`[Video] Fallback: Using image_url (singular) for ${request.modelId}`)
     }
   }
 
@@ -320,16 +329,12 @@ async function generateStandardVideo(
   // Watermark removal (if available)
   input.remove_watermark = true
 
-  console.log('[Video] Request:', JSON.stringify({
-    model,
-    input: {
-      ...input,
-      prompt: input.prompt?.substring(0, 50) + '...',
-      image_url: input.image_url ? '[URL present]' : undefined,
-      image_urls: input.image_urls ? `[${input.image_urls.length} URLs]` : undefined,
-      input_urls: input.input_urls ? `[${input.input_urls.length} URLs]` : undefined,
-    },
-  }))
+  // FULL DEBUG LOG - show exactly what we're sending
+  const fullPayload = {
+    model: model,
+    input: input,
+  }
+  console.log('[Video] FULL PAYLOAD:', JSON.stringify(fullPayload))
 
   const response = await fetch(`${KIE_API_BASE}/jobs/createTask`, {
     method: 'POST',
@@ -337,10 +342,7 @@ async function generateStandardVideo(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      model: model,
-      input: input,
-    }),
+    body: JSON.stringify(fullPayload),
   })
 
   const responseText = await response.text()
