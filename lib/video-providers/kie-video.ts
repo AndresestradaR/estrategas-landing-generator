@@ -132,7 +132,7 @@ async function generateVeoVideo(
  * 
  * IMPORTANT: Different models have different parameter requirements:
  * - Kling 2.6: duration as STRING, sound (boolean), image_urls (array)
- * - Kling v2.5 Turbo: duration as STRING, image_url (SINGULAR string, NOT array!)
+ * - Kling v2.5 Turbo: duration as STRING, image_url (SINGULAR), NO resolution param!
  * - Sora: n_frames as STRING
  * - Hailuo: image_url (singular)
  * - Others: duration as number, image_urls (array)
@@ -165,6 +165,10 @@ async function generateStandardVideo(
     } else if (isKlingV25 || isHailuo) {
       // Kling v2.5 Turbo and Hailuo use image_url (SINGULAR string!)
       input.image_url = request.imageUrls[0]
+      // Kling v2.5 also supports tail_image_url for end frame
+      if (request.imageUrls.length > 1) {
+        input.tail_image_url = request.imageUrls[1]
+      }
     } else {
       // Other models - try both to be safe, but prefer singular
       input.image_url = request.imageUrls[0]
@@ -176,7 +180,7 @@ async function generateStandardVideo(
     input.aspect_ratio = request.aspectRatio
   }
 
-  // Duration and audio - model specific handling
+  // Duration - model specific handling
   if (request.duration) {
     if (isSora) {
       // Sora uses n_frames as string
@@ -202,9 +206,18 @@ async function generateStandardVideo(
   }
   // Note: Kling v2.5 and Hailuo don't support audio, so we don't add any audio param
 
-  // Resolution (if supported)
-  if (request.resolution) {
+  // Resolution - ONLY if model accepts it
+  // Some models like Kling v2.5 Turbo don't accept resolution parameter
+  if (request.resolution && !modelConfig.noResolutionParam) {
     input.resolution = request.resolution
+  }
+
+  // Kling v2.5 specific params
+  if (isKlingV25) {
+    // Default cfg_scale for better results
+    input.cfg_scale = 0.5
+    // Optional: negative prompt for quality
+    input.negative_prompt = 'blur, distort, low quality'
   }
 
   // Watermark removal (if available)
