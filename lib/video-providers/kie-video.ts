@@ -12,6 +12,22 @@ import {
 const KIE_API_BASE = 'https://api.kie.ai/api/v1'
 
 /**
+ * Convert standard aspect ratio to Sora format
+ * Sora uses "landscape" / "portrait" instead of "16:9" / "9:16"
+ */
+function convertAspectRatioForSora(aspectRatio: string | undefined): string {
+  switch (aspectRatio) {
+    case '9:16':
+      return 'portrait'
+    case '1:1':
+      return 'landscape' // Sora doesn't have 1:1, default to landscape
+    case '16:9':
+    default:
+      return 'landscape'
+  }
+}
+
+/**
  * Generate video using KIE.ai API
  * 
  * Important:
@@ -140,6 +156,10 @@ async function generateVeoVideo(
  * - Wan: image_url (singular)
  * - Seedance: image_url (singular)
  * 
+ * ASPECT RATIO:
+ * - Sora 2: "landscape" / "portrait" (NOT "16:9" / "9:16"!)
+ * - Others: "16:9", "9:16", "1:1"
+ * 
  * DURATION:
  * - Kling: duration as STRING ("5" or "10")
  * - Sora: n_frames as STRING ("10" or "15")
@@ -191,9 +211,14 @@ async function generateStandardVideo(
     }
   }
 
-  // Aspect ratio - different models may use different formats
+  // Aspect ratio - SORA USES DIFFERENT FORMAT!
   if (request.aspectRatio) {
-    input.aspect_ratio = request.aspectRatio
+    if (isSora) {
+      // Sora uses "landscape" / "portrait" instead of "16:9" / "9:16"
+      input.aspect_ratio = convertAspectRatioForSora(request.aspectRatio)
+    } else {
+      input.aspect_ratio = request.aspectRatio
+    }
   }
 
   // Duration - model specific handling
