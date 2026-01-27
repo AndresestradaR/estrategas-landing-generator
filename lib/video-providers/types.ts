@@ -9,6 +9,7 @@ export type VideoModelId =
   | 'veo-3-fast'
   // Kling (Kuaishou)
   | 'kling-2.6'
+  | 'kling-v25-turbo'
   // OpenAI Sora
   | 'sora-2'
   // MiniMax Hailuo
@@ -40,6 +41,7 @@ export interface VideoModelConfig {
   supportsStartEndFrames: boolean
   supportsMultiShots: boolean
   requiresImage?: boolean // True if model ONLY supports image-to-video (no text-to-video)
+  noResolutionParam?: boolean // True if model doesn't accept resolution parameter
   useVeoEndpoint?: boolean // Special endpoint for Veo models
   tags?: VideoModelTag[]
   recommended?: boolean
@@ -54,7 +56,6 @@ export interface VideoCompanyGroup {
 }
 
 // Video Model Definitions - Model IDs from KIE.ai
-// NOTE: Only models confirmed to work on KIE.ai are included
 export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
   // ============ GOOGLE VEO (Special endpoint /api/v1/veo/generate) ============
   'veo-3.1': {
@@ -97,8 +98,6 @@ export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
   },
 
   // ============ KLING (KUAISHOU) ============
-  // NOTE: Kling v2.5 Turbo removed - not available on KIE.ai
-  // Kling 2.6 is newer, cheaper, and supports audio
   'kling-2.6': {
     id: 'kling-2.6',
     apiModelId: 'kling-2.6/image-to-video',
@@ -117,6 +116,25 @@ export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
     supportsMultiShots: false,
     tags: ['NEW', 'AUDIO', 'RECOMENDADO'],
     recommended: true,
+  },
+  'kling-v25-turbo': {
+    id: 'kling-v25-turbo',
+    apiModelId: 'kling/v2-5-turbo-image-to-video-pro',
+    apiModelIdText: 'kling/v2-5-turbo-text-to-video-pro',
+    name: 'Kling V2.5 Turbo',
+    description: 'Rápido y económico, sin audio',
+    company: 'kuaishou',
+    companyName: 'Kling',
+    priceRange: '$0.21-0.42',
+    durationRange: '5-10s',
+    resolutions: ['1080p'], // Fixed resolution, don't send as param
+    defaultResolution: '1080p',
+    supportsAudio: false,
+    supportsReferences: false,
+    supportsStartEndFrames: true, // supports tail_image_url
+    supportsMultiShots: false,
+    noResolutionParam: true, // IMPORTANT: Don't send resolution to API
+    tags: ['FAST'],
   },
 
   // ============ OPENAI SORA ============
@@ -277,6 +295,7 @@ export const VIDEO_COMPANY_GROUPS: VideoCompanyGroup[] = [
     color: 'from-purple-500 to-purple-600',
     models: [
       VIDEO_MODELS['kling-2.6'],
+      VIDEO_MODELS['kling-v25-turbo'],
     ],
   },
   {
