@@ -28,6 +28,22 @@ function convertAspectRatioForSora(aspectRatio: string | undefined): string {
 }
 
 /**
+ * Convert resolution for Hailuo format
+ * Hailuo uses "768P" / "1080P" (uppercase P)
+ */
+function convertResolutionForHailuo(resolution: string | undefined): string {
+  switch (resolution) {
+    case '1080p':
+    case '1080P':
+      return '1080P'
+    case '768p':
+    case '768P':
+    default:
+      return '768P'
+  }
+}
+
+/**
  * Generate video using KIE.ai API
  * 
  * Important:
@@ -163,7 +179,12 @@ async function generateVeoVideo(
  * DURATION:
  * - Kling: duration as STRING ("5" or "10")
  * - Sora: n_frames as STRING ("10" or "15")
+ * - Hailuo: duration as STRING ("6" or "10")
  * - Others: duration as number
+ * 
+ * RESOLUTION:
+ * - Hailuo: "768P" / "1080P" (uppercase P)
+ * - Others: "720p", "1080p"
  * 
  * AUDIO:
  * - Kling 2.6: sound (boolean) - REQUIRED
@@ -226,8 +247,8 @@ async function generateStandardVideo(
     if (isSora) {
       // Sora uses n_frames as string ("10" or "15")
       input.n_frames = request.duration.toString()
-    } else if (isKling) {
-      // All Kling models REQUIRE duration as STRING ("5" or "10")
+    } else if (isKling || isHailuo) {
+      // Kling and Hailuo REQUIRE duration as STRING
       input.duration = request.duration.toString()
     } else {
       // Other models use duration as number or string
@@ -250,7 +271,12 @@ async function generateStandardVideo(
   // Resolution - ONLY if model accepts it
   // Some models like Kling v2.5 Turbo don't accept resolution parameter
   if (request.resolution && !modelConfig.noResolutionParam) {
-    input.resolution = request.resolution
+    if (isHailuo) {
+      // Hailuo uses "768P" / "1080P" (uppercase P)
+      input.resolution = convertResolutionForHailuo(request.resolution)
+    } else {
+      input.resolution = request.resolution
+    }
   }
 
   // Kling v2.5 specific params
