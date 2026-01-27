@@ -40,6 +40,7 @@ export interface VideoModelConfig {
   supportsReferences: boolean
   supportsStartEndFrames: boolean
   supportsMultiShots: boolean
+  requiresImage?: boolean // True if model ONLY supports image-to-video (no text-to-video)
   useVeoEndpoint?: boolean // Special endpoint for Veo models
   tags?: VideoModelTag[]
   recommended?: boolean
@@ -118,9 +119,9 @@ export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
   'kling-v25-turbo': {
     id: 'kling-v25-turbo',
     apiModelId: 'kling/v2-5-turbo-image-to-video-pro',
-    apiModelIdText: 'kling/v2-5-turbo-text-to-video-pro',
+    // NO apiModelIdText - this model is IMAGE-TO-VIDEO ONLY
     name: 'Kling V2.5 Turbo',
-    description: 'Image-to-video profesional',
+    description: 'Solo image-to-video, requiere imagen',
     company: 'kuaishou',
     companyName: 'Kling',
     priceRange: '$0.21-0.42',
@@ -131,6 +132,7 @@ export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
     supportsReferences: false,
     supportsStartEndFrames: true,
     supportsMultiShots: false,
+    requiresImage: true, // IMPORTANT: No text-to-video support
     tags: ['IMG2VID'],
   },
 
@@ -159,8 +161,9 @@ export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
   'hailuo-2.3-pro': {
     id: 'hailuo-2.3-pro',
     apiModelId: 'hailuo/2-3-image-to-video-pro',
+    // NO apiModelIdText - image-to-video only
     name: 'Hailuo 2.3 Pro',
-    description: 'Alta calidad, precio competitivo',
+    description: 'Solo image-to-video, requiere imagen',
     company: 'minimax',
     companyName: 'MiniMax',
     priceRange: '$0.22-0.45',
@@ -171,14 +174,16 @@ export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
     supportsReferences: false,
     supportsStartEndFrames: true,
     supportsMultiShots: false,
-    tags: ['RECOMENDADO'],
+    requiresImage: true,
+    tags: ['IMG2VID', 'RECOMENDADO'],
     recommended: true,
   },
   'hailuo-2.3-standard': {
     id: 'hailuo-2.3-standard',
     apiModelId: 'hailuo/2-3-image-to-video-standard',
+    // NO apiModelIdText - image-to-video only
     name: 'Hailuo 2.3 Standard',
-    description: 'Económico para pruebas',
+    description: 'Solo image-to-video, económico',
     company: 'minimax',
     companyName: 'MiniMax',
     priceRange: '$0.15-0.26',
@@ -189,7 +194,8 @@ export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
     supportsReferences: false,
     supportsStartEndFrames: true,
     supportsMultiShots: false,
-    tags: ['FAST'],
+    requiresImage: true,
+    tags: ['IMG2VID', 'FAST'],
   },
 
   // ============ SEEDANCE (BYTEDANCE) ============
@@ -213,8 +219,9 @@ export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
   'seedance-1.0-fast': {
     id: 'seedance-1.0-fast',
     apiModelId: 'bytedance/v1-pro-fast-image-to-video',
+    // NO apiModelIdText - image-to-video only
     name: 'Seedance 1.0 Fast',
-    description: 'Muy económico',
+    description: 'Solo image-to-video, económico',
     company: 'seedance',
     companyName: 'Seedance',
     priceRange: '$0.30',
@@ -225,7 +232,8 @@ export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
     supportsReferences: true,
     supportsStartEndFrames: true,
     supportsMultiShots: true,
-    tags: ['FAST', 'REFERENCES', 'MULTI_SHOTS'],
+    requiresImage: true,
+    tags: ['IMG2VID', 'FAST', 'REFERENCES', 'MULTI_SHOTS'],
   },
 
   // ============ WAN ============
@@ -341,6 +349,12 @@ export function getVideoApiModelId(modelId: VideoModelId, hasImage: boolean): st
   }
   
   return model.apiModelId
+}
+
+// Helper to check if model requires an image
+export function modelRequiresImage(modelId: VideoModelId): boolean {
+  const model = VIDEO_MODELS[modelId]
+  return model?.requiresImage === true
 }
 
 // Generation request interface
