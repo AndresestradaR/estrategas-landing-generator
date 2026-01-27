@@ -41,7 +41,7 @@ export async function generateVideo(
     }
 
     // Standard models use createTask endpoint
-    return await generateStandardVideo(request, apiKey, apiModelId)
+    return await generateStandardVideo(request, apiKey, apiModelId, modelConfig)
 
   } catch (error: any) {
     console.error('[Video] Error:', error.message)
@@ -129,11 +129,17 @@ async function generateVeoVideo(
 /**
  * Generate video with standard models (Sora, Kling, Hailuo, Wan, Seedance)
  * Endpoint: POST /api/v1/jobs/createTask
+ * 
+ * IMPORTANT: Different models have different parameter requirements:
+ * - Kling 2.6: duration as STRING ("5" or "10"), sound (boolean) REQUIRED
+ * - Sora: n_frames as STRING
+ * - Others: duration as number, various audio params
  */
 async function generateStandardVideo(
   request: GenerateVideoRequest,
   apiKey: string,
-  model: string
+  model: string,
+  modelConfig: any
 ): Promise<GenerateVideoResult> {
   // Build input object
   const input: Record<string, any> = {
@@ -147,21 +153,42 @@ async function generateStandardVideo(
 
   // Aspect ratio - different models may use different formats
   if (request.aspectRatio) {
-    // Some models use 16:9 format, others use portrait/landscape
     input.aspect_ratio = request.aspectRatio
   }
 
-  // Duration - model specific
+  // Duration and audio - model specific handling
+  const isKling = request.modelId.startsWith('kling')
+  const isSora = request.modelId === 'sora-2'
+  const isWan = request.modelId.startsWith('wan')
+  const isHailuo = request.modelId.startsWith('hailuo')
+  const isSeedance = request.modelId.startsWith('seedance')
+
   if (request.duration) {
-    // Sora uses n_frames
-    if (request.modelId === 'sora-2') {
+    if (isSora) {
+      // Sora uses n_frames as string
       input.n_frames = request.duration.toString()
+    } else if (isKling) {
+      // Kling 2.6 REQUIRES duration as STRING ("5" or "10")
+      input.duration = request.duration.toString()
     } else {
+      // Other models use duration as number or string
       input.duration = request.duration
     }
   }
 
-  // Resolution
+  // Audio parameter - different names for different models
+  if (isKling) {
+    // Kling 2.6 uses "sound" (boolean) - THIS IS REQUIRED!
+    input.sound = request.enableAudio ?? false
+  } else if (isWan || isSeedance) {
+    // Wan and Seedance may use different audio params
+    if (modelConfig.supportsAudio) {
+      input.enable_audio = request.enableAudio ?? false
+    }
+  }
+  // Note: Hailuo doesn't support audio, so we don't add any audio param
+
+  // Resolution (if supported)
   if (request.resolution) {
     input.resolution = request.resolution
   }
