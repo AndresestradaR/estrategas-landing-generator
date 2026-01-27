@@ -167,10 +167,10 @@ async function generateVeoVideo(
  * IMAGE FIELD NAMES:
  * - Kling 2.6: image_urls (array)
  * - Sora 2: image_urls (array)
+ * - Seedance: input_urls (array)
  * - Kling v2.5 Turbo: image_url (singular string)
  * - Hailuo: image_url (singular string)
  * - Wan: image_url (singular)
- * - Seedance: image_url (singular)
  * 
  * ASPECT RATIO:
  * - Sora 2: "landscape" / "portrait" (NOT "16:9" / "9:16"!)
@@ -180,15 +180,18 @@ async function generateVeoVideo(
  * - Kling: duration as STRING ("5" or "10")
  * - Sora: n_frames as STRING ("10" or "15")
  * - Hailuo: duration as STRING ("6" or "10")
+ * - Seedance: duration as STRING ("4", "8", "12")
  * - Others: duration as number
  * 
  * RESOLUTION:
  * - Hailuo: "768P" / "1080P" (uppercase P)
+ * - Seedance: "480p", "720p", "1080p"
  * - Others: "720p", "1080p"
  * 
  * AUDIO:
  * - Kling 2.6: sound (boolean) - REQUIRED
- * - Wan/Seedance: enable_audio (boolean)
+ * - Seedance: generate_audio (boolean)
+ * - Wan: enable_audio (boolean)
  * - Kling v2.5/Hailuo: no audio support
  */
 async function generateStandardVideo(
@@ -216,6 +219,9 @@ async function generateStandardVideo(
     if (isKling26 || isSora) {
       // Kling 2.6 and Sora 2 use image_urls (plural array)
       input.image_urls = request.imageUrls
+    } else if (isSeedance) {
+      // Seedance uses input_urls (array)
+      input.input_urls = request.imageUrls
     } else if (isKlingV25) {
       // Kling v2.5 Turbo uses image_url (SINGULAR string!)
       input.image_url = request.imageUrls[0]
@@ -227,7 +233,7 @@ async function generateStandardVideo(
       // Hailuo uses image_url (singular)
       input.image_url = request.imageUrls[0]
     } else {
-      // Wan, Seedance, others - use singular image_url
+      // Wan, others - use singular image_url
       input.image_url = request.imageUrls[0]
     }
   }
@@ -240,6 +246,9 @@ async function generateStandardVideo(
     } else {
       input.aspect_ratio = request.aspectRatio
     }
+  } else if (isSeedance) {
+    // Seedance requires aspect_ratio, default to 16:9
+    input.aspect_ratio = '16:9'
   }
 
   // Duration - model specific handling
@@ -247,21 +256,29 @@ async function generateStandardVideo(
     if (isSora) {
       // Sora uses n_frames as string ("10" or "15")
       input.n_frames = request.duration.toString()
-    } else if (isKling || isHailuo) {
-      // Kling and Hailuo REQUIRE duration as STRING
+    } else if (isKling || isHailuo || isSeedance) {
+      // Kling, Hailuo, and Seedance REQUIRE duration as STRING
       input.duration = request.duration.toString()
     } else {
       // Other models use duration as number or string
       input.duration = request.duration
     }
+  } else if (isSeedance) {
+    // Seedance requires duration, default to 8s
+    input.duration = '8'
   }
 
   // Audio parameter - different names for different models
   if (isKling26) {
     // Kling 2.6 uses "sound" (boolean) - THIS IS REQUIRED!
     input.sound = request.enableAudio ?? false
-  } else if (isWan || isSeedance) {
-    // Wan and Seedance may use different audio params
+  } else if (isSeedance) {
+    // Seedance uses generate_audio (boolean)
+    if (modelConfig.supportsAudio) {
+      input.generate_audio = request.enableAudio ?? false
+    }
+  } else if (isWan) {
+    // Wan uses enable_audio (boolean)
     if (modelConfig.supportsAudio) {
       input.enable_audio = request.enableAudio ?? false
     }
@@ -297,6 +314,7 @@ async function generateStandardVideo(
       prompt: input.prompt?.substring(0, 50) + '...',
       image_url: input.image_url ? '[URL present]' : undefined,
       image_urls: input.image_urls ? `[${input.image_urls.length} URLs]` : undefined,
+      input_urls: input.input_urls ? `[${input.input_urls.length} URLs]` : undefined,
     },
   }))
 
