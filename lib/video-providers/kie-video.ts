@@ -167,20 +167,23 @@ async function generateVeoVideo(
  * IMAGE FIELD NAMES:
  * - Kling 2.6: image_urls (array)
  * - Sora 2: image_urls (array)
- * - Seedance: input_urls (array)
+ * - Seedance 1.5 Pro: input_urls (array)
+ * - Seedance 1.0 Fast: image_url (singular string)
  * - Kling v2.5 Turbo: image_url (singular string)
  * - Hailuo: image_url (singular string)
  * - Wan: image_url (singular)
  * 
  * ASPECT RATIO:
  * - Sora 2: "landscape" / "portrait" (NOT "16:9" / "9:16"!)
+ * - Seedance 1.5 Pro: "16:9", "9:16", "1:1" (REQUIRED)
  * - Others: "16:9", "9:16", "1:1"
  * 
  * DURATION:
  * - Kling: duration as STRING ("5" or "10")
  * - Sora: n_frames as STRING ("10" or "15")
  * - Hailuo: duration as STRING ("6" or "10")
- * - Seedance: duration as STRING ("4", "8", "12")
+ * - Seedance 1.5 Pro: duration as STRING ("4", "8", "12") - REQUIRED
+ * - Seedance 1.0 Fast: duration as STRING ("5" or "10")
  * - Others: duration as number
  * 
  * RESOLUTION:
@@ -190,9 +193,9 @@ async function generateVeoVideo(
  * 
  * AUDIO:
  * - Kling 2.6: sound (boolean) - REQUIRED
- * - Seedance: generate_audio (boolean)
+ * - Seedance 1.5 Pro: generate_audio (boolean)
  * - Wan: enable_audio (boolean)
- * - Kling v2.5/Hailuo: no audio support
+ * - Kling v2.5/Hailuo/Seedance 1.0: no audio support
  */
 async function generateStandardVideo(
   request: GenerateVideoRequest,
@@ -212,16 +215,21 @@ async function generateStandardVideo(
   const isSora = request.modelId === 'sora-2'
   const isWan = request.modelId.startsWith('wan')
   const isHailuo = request.modelId.startsWith('hailuo')
-  const isSeedance = request.modelId.startsWith('seedance')
+  const isSeedance15 = request.modelId === 'seedance-1.5-pro'
+  const isSeedance10 = request.modelId === 'seedance-1.0-fast'
+  const isSeedance = isSeedance15 || isSeedance10
 
   // Image URLs - DIFFERENT MODELS USE DIFFERENT FIELD NAMES!
   if (request.imageUrls && request.imageUrls.length > 0) {
     if (isKling26 || isSora) {
       // Kling 2.6 and Sora 2 use image_urls (plural array)
       input.image_urls = request.imageUrls
-    } else if (isSeedance) {
-      // Seedance uses input_urls (array)
+    } else if (isSeedance15) {
+      // Seedance 1.5 Pro uses input_urls (array)
       input.input_urls = request.imageUrls
+    } else if (isSeedance10) {
+      // Seedance 1.0 Fast uses image_url (singular string)
+      input.image_url = request.imageUrls[0]
     } else if (isKlingV25) {
       // Kling v2.5 Turbo uses image_url (SINGULAR string!)
       input.image_url = request.imageUrls[0]
@@ -246,8 +254,8 @@ async function generateStandardVideo(
     } else {
       input.aspect_ratio = request.aspectRatio
     }
-  } else if (isSeedance) {
-    // Seedance requires aspect_ratio, default to 16:9
+  } else if (isSeedance15) {
+    // Seedance 1.5 Pro requires aspect_ratio, default to 16:9
     input.aspect_ratio = '16:9'
   }
 
@@ -257,23 +265,26 @@ async function generateStandardVideo(
       // Sora uses n_frames as string ("10" or "15")
       input.n_frames = request.duration.toString()
     } else if (isKling || isHailuo || isSeedance) {
-      // Kling, Hailuo, and Seedance REQUIRE duration as STRING
+      // Kling, Hailuo, and ALL Seedance models REQUIRE duration as STRING
       input.duration = request.duration.toString()
     } else {
       // Other models use duration as number or string
       input.duration = request.duration
     }
-  } else if (isSeedance) {
-    // Seedance requires duration, default to 8s
+  } else if (isSeedance15) {
+    // Seedance 1.5 Pro requires duration, default to 8s
     input.duration = '8'
+  } else if (isSeedance10) {
+    // Seedance 1.0 Fast - duration is optional but use 5s as default
+    input.duration = '5'
   }
 
   // Audio parameter - different names for different models
   if (isKling26) {
     // Kling 2.6 uses "sound" (boolean) - THIS IS REQUIRED!
     input.sound = request.enableAudio ?? false
-  } else if (isSeedance) {
-    // Seedance uses generate_audio (boolean)
+  } else if (isSeedance15) {
+    // Only Seedance 1.5 Pro supports generate_audio
     if (modelConfig.supportsAudio) {
       input.generate_audio = request.enableAudio ?? false
     }
@@ -283,7 +294,7 @@ async function generateStandardVideo(
       input.enable_audio = request.enableAudio ?? false
     }
   }
-  // Note: Kling v2.5, Hailuo, and Sora don't need audio param (or handle it differently)
+  // Note: Kling v2.5, Hailuo, Sora, and Seedance 1.0 don't support audio
 
   // Resolution - ONLY if model accepts it
   // Some models like Kling v2.5 Turbo don't accept resolution parameter
