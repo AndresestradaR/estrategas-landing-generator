@@ -131,11 +131,24 @@ async function generateVeoVideo(
  * Endpoint: POST /api/v1/jobs/createTask
  * 
  * IMPORTANT: Different models have different parameter requirements:
- * - Kling 2.6: duration as STRING, sound (boolean), image_urls (array)
- * - Kling v2.5 Turbo: duration as STRING, image_url (SINGULAR), NO resolution param!
- * - Sora: n_frames as STRING
- * - Hailuo: image_url (singular)
- * - Others: duration as number, image_urls (array)
+ * 
+ * IMAGE FIELD NAMES:
+ * - Kling 2.6: image_urls (array)
+ * - Sora 2: image_urls (array)
+ * - Kling v2.5 Turbo: image_url (singular string)
+ * - Hailuo: image_url (singular string)
+ * - Wan: image_url (singular)
+ * - Seedance: image_url (singular)
+ * 
+ * DURATION:
+ * - Kling: duration as STRING ("5" or "10")
+ * - Sora: n_frames as STRING ("10" or "15")
+ * - Others: duration as number
+ * 
+ * AUDIO:
+ * - Kling 2.6: sound (boolean) - REQUIRED
+ * - Wan/Seedance: enable_audio (boolean)
+ * - Kling v2.5/Hailuo: no audio support
  */
 async function generateStandardVideo(
   request: GenerateVideoRequest,
@@ -159,18 +172,21 @@ async function generateStandardVideo(
 
   // Image URLs - DIFFERENT MODELS USE DIFFERENT FIELD NAMES!
   if (request.imageUrls && request.imageUrls.length > 0) {
-    if (isKling26) {
-      // Kling 2.6 uses image_urls (plural array)
+    if (isKling26 || isSora) {
+      // Kling 2.6 and Sora 2 use image_urls (plural array)
       input.image_urls = request.imageUrls
-    } else if (isKlingV25 || isHailuo) {
-      // Kling v2.5 Turbo and Hailuo use image_url (SINGULAR string!)
+    } else if (isKlingV25) {
+      // Kling v2.5 Turbo uses image_url (SINGULAR string!)
       input.image_url = request.imageUrls[0]
-      // Kling v2.5 also supports tail_image_url for end frame
+      // Also supports tail_image_url for end frame
       if (request.imageUrls.length > 1) {
         input.tail_image_url = request.imageUrls[1]
       }
+    } else if (isHailuo) {
+      // Hailuo uses image_url (singular)
+      input.image_url = request.imageUrls[0]
     } else {
-      // Other models - try both to be safe, but prefer singular
+      // Wan, Seedance, others - use singular image_url
       input.image_url = request.imageUrls[0]
     }
   }
@@ -183,7 +199,7 @@ async function generateStandardVideo(
   // Duration - model specific handling
   if (request.duration) {
     if (isSora) {
-      // Sora uses n_frames as string
+      // Sora uses n_frames as string ("10" or "15")
       input.n_frames = request.duration.toString()
     } else if (isKling) {
       // All Kling models REQUIRE duration as STRING ("5" or "10")
@@ -204,7 +220,7 @@ async function generateStandardVideo(
       input.enable_audio = request.enableAudio ?? false
     }
   }
-  // Note: Kling v2.5 and Hailuo don't support audio, so we don't add any audio param
+  // Note: Kling v2.5, Hailuo, and Sora don't need audio param (or handle it differently)
 
   // Resolution - ONLY if model accepts it
   // Some models like Kling v2.5 Turbo don't accept resolution parameter
