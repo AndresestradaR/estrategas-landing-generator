@@ -9,7 +9,6 @@ export type VideoModelId =
   | 'veo-3-fast'
   // Kling (Kuaishou)
   | 'kling-2.6'
-  | 'kling-v25-turbo'
   // OpenAI Sora
   | 'sora-2'
   // MiniMax Hailuo
@@ -55,6 +54,7 @@ export interface VideoCompanyGroup {
 }
 
 // Video Model Definitions - Model IDs from KIE.ai
+// NOTE: Only models confirmed to work on KIE.ai are included
 export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
   // ============ GOOGLE VEO (Special endpoint /api/v1/veo/generate) ============
   'veo-3.1': {
@@ -97,15 +97,17 @@ export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
   },
 
   // ============ KLING (KUAISHOU) ============
+  // NOTE: Kling v2.5 Turbo removed - not available on KIE.ai
+  // Kling 2.6 is newer, cheaper, and supports audio
   'kling-2.6': {
     id: 'kling-2.6',
     apiModelId: 'kling-2.6/image-to-video',
     apiModelIdText: 'kling-2.6/text-to-video',
     name: 'Kling 2.6',
-    description: 'Último modelo, muy económico',
+    description: 'Último modelo con audio, muy económico',
     company: 'kuaishou',
     companyName: 'Kling',
-    priceRange: '$0.08-0.36',
+    priceRange: '$0.08-0.55',
     durationRange: '5-10s',
     resolutions: ['720p', '1080p'],
     defaultResolution: '1080p',
@@ -115,25 +117,6 @@ export const VIDEO_MODELS: Record<VideoModelId, VideoModelConfig> = {
     supportsMultiShots: false,
     tags: ['NEW', 'AUDIO', 'RECOMENDADO'],
     recommended: true,
-  },
-  'kling-v25-turbo': {
-    id: 'kling-v25-turbo',
-    apiModelId: 'kling/v2-5-turbo-image-to-video-pro',
-    // NO apiModelIdText - this model is IMAGE-TO-VIDEO ONLY
-    name: 'Kling V2.5 Turbo',
-    description: 'Solo image-to-video, requiere imagen',
-    company: 'kuaishou',
-    companyName: 'Kling',
-    priceRange: '$0.21-0.42',
-    durationRange: '5-10s',
-    resolutions: ['720p', '1080p'],
-    defaultResolution: '1080p',
-    supportsAudio: false,
-    supportsReferences: false,
-    supportsStartEndFrames: true,
-    supportsMultiShots: false,
-    requiresImage: true, // IMPORTANT: No text-to-video support
-    tags: ['IMG2VID'],
   },
 
   // ============ OPENAI SORA ============
@@ -294,7 +277,6 @@ export const VIDEO_COMPANY_GROUPS: VideoCompanyGroup[] = [
     color: 'from-purple-500 to-purple-600',
     models: [
       VIDEO_MODELS['kling-2.6'],
-      VIDEO_MODELS['kling-v25-turbo'],
     ],
   },
   {
