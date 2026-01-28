@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { generateSpeech } from '@/lib/audio-providers/elevenlabs'
+import { generateSpeech as generateElevenLabs } from '@/lib/audio-providers/elevenlabs'
+import { generateSpeech as generateGoogleTTS } from '@/lib/audio-providers/google-tts'
 import { createClient } from '@/lib/supabase/server'
-import { AUDIO_MODELS, type GenerateAudioRequest, type AudioModelId } from '@/lib/audio-providers/types'
-
-// Max duration for audio generation (in seconds)
-const MAX_DURATION = 60
+import { AUDIO_MODELS, type AudioModelId } from '@/lib/audio-providers/types'
 
 export async function POST(req: NextRequest) {
   try {
@@ -16,8 +14,8 @@ export async function POST(req: NextRequest) {
       provider = 'elevenlabs',
       settings,
       outputFormat = 'mp3_44100_128',
-      languageCode = 'es', // Default to Spanish
-    } = body as GenerateAudioRequest & { provider?: string }
+      languageCode = 'es',
+    } = body
 
     // Validation
     if (!text || typeof text !== 'string') {
@@ -35,36 +33,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Check text length
-    const modelConfig = AUDIO_MODELS[modelId as AudioModelId]
-    const maxChars = modelConfig?.maxCharacters || 5000
-    
+    const maxChars = 5000
     if (text.length > maxChars) {
       return NextResponse.json(
         { success: false, error: `Text exceeds maximum length of ${maxChars} characters` },
-        { status: 400 }
-      )
-    }
-
-    // Get API key based on provider
-    let apiKey: string | undefined
-    
-    if (provider === 'elevenlabs') {
-      apiKey = process.env.ELEVENLABS_API_KEY
-      if (!apiKey) {
-        return NextResponse.json(
-          { success: false, error: 'ElevenLabs API key not configured' },
-          { status: 500 }
-        )
-      }
-    } else if (provider === 'google-tts') {
-      // TODO: Implement Google Cloud TTS
-      return NextResponse.json(
-        { success: false, error: 'Google TTS not yet implemented' },
-        { status: 501 }
-      )
-    } else {
-      return NextResponse.json(
-        { success: false, error: `Unknown provider: ${provider}` },
         { status: 400 }
       )
     }
@@ -77,18 +49,57 @@ export async function POST(req: NextRequest) {
       languageCode,
     })
 
-    // Generate audio
-    const result = await generateSpeech(
-      {
-        text,
-        voiceId,
-        modelId: modelId as AudioModelId,
-        settings,
-        outputFormat,
-        languageCode,
-      },
-      apiKey
-    )
+    let result: {
+      success: boolean
+      audioBase64?: string
+      contentType?: string
+      charactersUsed?: number
+      error?: string
+      provider: string
+    }
+
+    // Generate audio based on provider
+    if (provider === 'elevenlabs') {
+      const apiKey = process.env.ELEVENLABS_API_KEY
+      if (!apiKey) {
+        return NextResponse.json(
+          { success: false, error: 'ElevenLabs API key not configured' },
+          { status: 500 }
+        )
+      }
+
+      result = await generateElevenLabs(
+        {
+          text,
+          voiceId,
+          modelId: modelId as AudioModelId,
+          settings,
+          outputFormat,
+          languageCode,
+        },
+        apiKey
+      )
+
+    } else if (provider === 'google-tts' || provider === 'google') {
+      const apiKey = process.env.GOOGLE_TTS_API_KEY || process.env.GOOGLE_API_KEY
+      if (!apiKey) {
+        return NextResponse.json(
+          { success: false, error: 'Google TTS API key not configured. Add GOOGLE_TTS_API_KEY to env.' },
+          { status: 500 }
+        )
+      }
+
+      result = await generateGoogleTTS(text, voiceId, apiKey, {
+        speakingRate: settings?.speed ?? 1.0,
+        pitch: settings?.style ? (settings.style - 0.5) * 10 : 0, // Convert 0-1 to -5 to +5
+      })
+
+    } else {
+      return NextResponse.json(
+        { success: false, error: `Unknown provider: ${provider}` },
+        { status: 400 }
+      )
+    }
 
     if (!result.success || !result.audioBase64) {
       return NextResponse.json(
@@ -97,16 +108,15 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Upload to Supabase storage (temporary)
+    // Upload to Supabase storage
     const supabase = await createClient()
     const fileName = `audio_${Date.now()}_${Math.random().toString(36).substring(7)}.mp3`
     const filePath = `audio/${fileName}`
 
-    // Convert base64 to buffer
     const audioBuffer = Buffer.from(result.audioBase64, 'base64')
 
     const { error: uploadError } = await supabase.storage
-      .from('landing-images') // Using existing bucket for now
+      .from('landing-images')
       .upload(filePath, audioBuffer, {
         contentType: result.contentType || 'audio/mpeg',
         cacheControl: '3600',
@@ -132,6 +142,7 @@ export async function POST(req: NextRequest) {
     console.log('[API/generate-audio] Success:', {
       audioUrl: urlData.publicUrl,
       charactersUsed: result.charactersUsed,
+      provider: result.provider,
     })
 
     return NextResponse.json({
