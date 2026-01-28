@@ -67,6 +67,7 @@ export function VideoGenerator() {
 
   // State
   const [isGenerating, setIsGenerating] = useState(false)
+  const [generatingStatus, setGeneratingStatus] = useState<string>('')
   const [generatedVideos, setGeneratedVideos] = useState<GeneratedVideo[]>([])
   const [error, setError] = useState<string | null>(null)
 
@@ -75,19 +76,55 @@ export function VideoGenerator() {
 
   const currentModel = VIDEO_MODELS[selectedModel]
 
+  // Poll for video status
+  const pollForStatus = async (taskId: string): Promise<{ success: boolean; videoUrl?: string; error?: string }> => {
+    const maxAttempts = 200 // ~10 minutes at 3s intervals
+    const interval = 3000 // 3 seconds
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        setGeneratingStatus(`Procesando video... (${Math.floor(attempt * 3 / 60)}:${String((attempt * 3) % 60).padStart(2, '0')})`)
+
+        const response = await fetch(`/api/studio/video-status?taskId=${taskId}`)
+        const data = await response.json()
+
+        if (data.status === 'completed' && data.videoUrl) {
+          return { success: true, videoUrl: data.videoUrl }
+        }
+
+        if (data.status === 'failed') {
+          return { success: false, error: data.error || 'Error al generar video' }
+        }
+
+        // Still processing, wait and try again
+        await new Promise(resolve => setTimeout(resolve, interval))
+      } catch (err) {
+        console.error('Polling error:', err)
+        // Continue polling even if one request fails
+        await new Promise(resolve => setTimeout(resolve, interval))
+      }
+    }
+
+    return { success: false, error: 'Timeout: el video tardó demasiado en generarse' }
+  }
+
   const handleGenerate = async () => {
     if (!prompt.trim()) return
 
     setIsGenerating(true)
     setError(null)
+    setGeneratingStatus('Iniciando generación...')
 
     try {
       // Convert image to base64 if present
       let imageBase64: string | undefined
 
       if (inputImage && currentModel.supportsStartEndFrames) {
+        setGeneratingStatus('Subiendo imagen...')
         imageBase64 = await fileToBase64(inputImage.file)
       }
+
+      setGeneratingStatus('Creando tarea de video...')
 
       const response = await fetch('/api/studio/generate-video', {
         method: 'POST',
@@ -99,21 +136,33 @@ export function VideoGenerator() {
           aspectRatio,
           resolution,
           enableAudio: currentModel.supportsAudio ? enableAudio : false,
-          imageBase64, // Image will be uploaded to Supabase for public URL
+          imageBase64,
         }),
       })
 
       const data = await response.json()
 
       if (!data.success) {
-        throw new Error(data.error || 'Error al generar video')
+        throw new Error(data.error || 'Error al iniciar generación')
+      }
+
+      if (!data.taskId) {
+        throw new Error('No se recibió taskId del servidor')
+      }
+
+      // Poll for result from frontend
+      setGeneratingStatus('Video en cola, esperando...')
+      const result = await pollForStatus(data.taskId)
+
+      if (!result.success) {
+        throw new Error(result.error || 'Error al generar video')
       }
 
       // Add to gallery
       setGeneratedVideos((prev) => [
         {
           id: Date.now().toString(),
-          url: data.videoUrl,
+          url: result.videoUrl!,
           prompt,
           model: currentModel.name,
           timestamp: new Date(),
@@ -122,8 +171,11 @@ export function VideoGenerator() {
         },
         ...prev,
       ])
+
+      setGeneratingStatus('')
     } catch (err: any) {
       setError(err.message)
+      setGeneratingStatus('')
     } finally {
       setIsGenerating(false)
     }
@@ -134,7 +186,7 @@ export function VideoGenerator() {
       const reader = new FileReader()
       reader.onload = () => {
         const result = reader.result as string
-        resolve(result) // Include full data URL, API will handle it
+        resolve(result)
       }
       reader.onerror = reject
       reader.readAsDataURL(file)
@@ -152,7 +204,6 @@ export function VideoGenerator() {
   }
 
   const getDurationOptions = () => {
-    // Parse duration range from model config (e.g., "4-8s" -> [4, 8])
     const range = currentModel.durationRange.match(/(\d+)-(\d+)/)
     if (!range) return [5, 10]
     const min = parseInt(range[1])
@@ -213,7 +264,6 @@ export function VideoGenerator() {
                           onClick={() => {
                             setSelectedModel(model.id)
                             setResolution(model.defaultResolution)
-                            // Reset duration to valid range
                             const range = model.durationRange.match(/(\d+)-(\d+)/)
                             if (range) {
                               setDuration(parseInt(range[1]))
@@ -467,7 +517,7 @@ export function VideoGenerator() {
             {isGenerating ? (
               <>
                 <Loader2 className="w-5 h-5 animate-spin" />
-                Generando video...
+                {generatingStatus || 'Generando...'}
               </>
             ) : (
               <>
