@@ -1,13 +1,13 @@
 // Gemini TTS Provider (Google AI Studio)
-// Uses Gemini 2.5 Pro TTS - dedicated text-to-speech model
-// Docs: https://ai.google.dev/gemini-api/docs/text-generation
+// Uses Gemini 2.5 Flash Preview TTS - dedicated text-to-speech model
+// Docs: https://ai.google.dev/gemini-api/docs/speech-generation
 
 import { Voice, GenerateAudioResult, ListVoicesResult } from './types'
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta'
 
 // Gemini 2.5 TTS available voices
-// These are the voice presets available in Gemini TTS
+// Reference: https://ai.google.dev/gemini-api/docs/speech-generation
 const GEMINI_VOICES = [
   { id: 'Puck', name: 'Puck', gender: 'male', description: 'Voz masculina natural' },
   { id: 'Charon', name: 'Charon', gender: 'male', description: 'Voz masculina profunda' },
@@ -25,9 +25,8 @@ export async function generateSpeech(
   }
 ): Promise<GenerateAudioResult> {
   try {
-    const languageCode = options?.languageCode || 'es-MX'
-    
-    // Use Gemini 2.5 Pro TTS model
+    // Use Gemini 2.5 Flash Preview TTS model
+    // Docs: https://ai.google.dev/gemini-api/docs/speech-generation
     const requestBody = {
       contents: [
         {
@@ -52,12 +51,11 @@ export async function generateSpeech(
 
     console.log('[Audio/GeminiTTS] Generating speech:', {
       voiceId,
-      languageCode,
       textLength: text.length,
     })
 
     const response = await fetch(
-      `${GEMINI_API_BASE}/models/gemini-2.5-pro-tts:generateContent?key=${apiKey}`,
+      `${GEMINI_API_BASE}/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
