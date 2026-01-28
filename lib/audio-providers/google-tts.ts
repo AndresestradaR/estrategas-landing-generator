@@ -1,13 +1,13 @@
 // Gemini TTS Provider (Google AI Studio)
-// Uses Gemini 2.0 Flash with native TTS capabilities
+// Uses Gemini 2.5 Flash TTS - dedicated text-to-speech model
 // Docs: https://ai.google.dev/gemini-api/docs/text-generation
 
 import { Voice, GenerateAudioResult, ListVoicesResult } from './types'
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta'
 
-// Gemini 2.0 available voices for TTS
-// These are the voice presets available in Gemini
+// Gemini 2.5 TTS available voices
+// These are the voice presets available in Gemini TTS
 const GEMINI_VOICES = [
   { id: 'Puck', name: 'Puck', gender: 'male', description: 'Voz masculina natural' },
   { id: 'Charon', name: 'Charon', gender: 'male', description: 'Voz masculina profunda' },
@@ -27,13 +27,13 @@ export async function generateSpeech(
   try {
     const languageCode = options?.languageCode || 'es-MX'
     
-    // Use Gemini 2.0 Flash with audio output
+    // Use Gemini 2.5 Flash TTS model
     const requestBody = {
       contents: [
         {
           parts: [
             {
-              text: `Lee el siguiente texto en español con voz natural y expresiva:\n\n${text}`
+              text: text
             }
           ]
         }
@@ -57,7 +57,7 @@ export async function generateSpeech(
     })
 
     const response = await fetch(
-      `${GEMINI_API_BASE}/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
+      `${GEMINI_API_BASE}/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
