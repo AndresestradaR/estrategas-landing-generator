@@ -148,20 +148,15 @@ export const AUDIO_MODELS: Record<AudioModelId, AudioModelConfig> = {
   },
 }
 
-// Default Spanish LATAM voices for quick access
+// Default Spanish LATAM voices - loaded from API with Spanish filter
+// No hardcoded English voices - voices are fetched dynamically
 export const SPANISH_LATAM_VOICES = {
-  elevenlabs: [
-    { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Bella', gender: 'female' as const },
-    { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni', gender: 'male' as const },
-    { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold', gender: 'male' as const },
-    { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam', gender: 'male' as const },
-    { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel', gender: 'female' as const },
-  ],
+  elevenlabs: [] as { id: string; name: string; gender: 'male' | 'female' }[],
   google: [
-    { id: 'es-US-Neural2-A', name: 'US Spanish Female A', gender: 'female' as const },
-    { id: 'es-US-Neural2-B', name: 'US Spanish Male B', gender: 'male' as const },
-    { id: 'es-US-Neural2-C', name: 'US Spanish Male C', gender: 'male' as const },
-    { id: 'es-MX-Wavenet-A', name: 'Mexico Female A', gender: 'female' as const },
-    { id: 'es-MX-Wavenet-B', name: 'Mexico Male B', gender: 'male' as const },
+    { id: 'es-MX-Wavenet-A', name: 'Mexico Femenina', gender: 'female' as const },
+    { id: 'es-MX-Wavenet-B', name: 'Mexico Masculino', gender: 'male' as const },
+    { id: 'es-MX-Wavenet-C', name: 'Mexico Femenina 2', gender: 'female' as const },
+    { id: 'es-US-Neural2-A', name: 'Latino US Femenina', gender: 'female' as const },
+    { id: 'es-US-Neural2-B', name: 'Latino US Masculino', gender: 'male' as const },
   ],
 }
