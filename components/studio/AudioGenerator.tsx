@@ -64,9 +64,9 @@ const PROVIDERS = {
     borderColor: 'border-purple-500/20',
   },
   'google-tts': {
-    name: 'Google TTS',
-    description: 'Neural2 y Wavenet de Google',
-    icon: '🔊',
+    name: 'Gemini TTS',
+    description: 'Voces IA de Google (misma API key)',
+    icon: '✨',
     color: 'from-blue-500/20 to-blue-500/5',
     borderColor: 'border-blue-500/20',
   },
@@ -191,12 +191,12 @@ export function AudioGenerator() {
 
       const newAudio: GeneratedAudio = {
         id: Date.now().toString(),
-        url: data.audioUrl || `data:audio/mpeg;base64,${data.audioBase64}`,
+        url: data.audioUrl || `data:${data.contentType || 'audio/mpeg'};base64,${data.audioBase64}`,
         text,
         voiceName: selectedVoice.name,
         model: selectedProvider === 'elevenlabs' 
           ? ELEVENLABS_MODELS[selectedModel].name 
-          : 'Google TTS',
+          : 'Gemini TTS',
         provider: selectedProvider,
         timestamp: new Date(),
         charactersUsed: data.charactersUsed || text.length,
@@ -386,7 +386,7 @@ export function AudioGenerator() {
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="block text-sm font-medium text-text-secondary">
-                Voz {selectedProvider === 'google-tts' ? 'Google' : 'ElevenLabs'}
+                Voz {selectedProvider === 'google-tts' ? 'Gemini' : 'ElevenLabs'}
               </label>
               <button
                 onClick={loadVoices}
@@ -432,7 +432,7 @@ export function AudioGenerator() {
                         <p className="text-sm font-medium text-text-primary">{selectedVoice?.name || 'Selecciona voz'}</p>
                         <p className="text-xs text-text-secondary">
                           {selectedVoice?.gender === 'female' ? 'Femenina' : 'Masculina'}
-                          {selectedVoice?.accent && ` · ${selectedVoice.accent}`}
+                          {selectedVoice?.description && ` · ${selectedVoice.description}`}
                         </p>
                       </div>
                     </div>
@@ -488,7 +488,7 @@ export function AudioGenerator() {
                               <div className="flex-1 text-left">
                                 <p className="text-sm font-medium">{voice.name}</p>
                                 <p className="text-xs text-text-secondary line-clamp-1">
-                                  {voice.accent || voice.description}
+                                  {voice.description}
                                 </p>
                               </div>
                               {selectedVoice?.id === voice.id && (
@@ -506,13 +506,18 @@ export function AudioGenerator() {
           </div>
 
           {/* Language Badge */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-green-500/10 text-green-400 border border-green-500/20">
-              <Globe className="w-3 h-3" /> Espanol (LATAM)
+              <Globe className="w-3 h-3" /> Espanol
             </span>
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-surface-elevated text-text-secondary border border-border">
               {PROVIDERS[selectedProvider].icon} {PROVIDERS[selectedProvider].name}
             </span>
+            {selectedProvider === 'google-tts' && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                💰 Gratis (API key AI Studio)
+              </span>
+            )}
           </div>
 
           {/* Text Input */}
@@ -551,7 +556,7 @@ export function AudioGenerator() {
           </button>
 
           {/* Advanced Settings */}
-          {showAdvanced && (
+          {showAdvanced && selectedProvider === 'elevenlabs' && (
             <div className="space-y-4 p-4 bg-surface-elevated rounded-xl border border-border">
               {/* Speed */}
               <div>
@@ -574,79 +579,50 @@ export function AudioGenerator() {
                 />
               </div>
 
-              {/* ElevenLabs specific settings */}
-              {selectedProvider === 'elevenlabs' && (
-                <>
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="text-xs font-medium text-text-secondary">
-                        Estabilidad
-                      </label>
-                      <span className="text-xs text-text-muted">
-                        {Math.round(settings.stability * 100)}%
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.05"
-                      value={settings.stability}
-                      onChange={(e) => setSettings({ ...settings, stability: parseFloat(e.target.value) })}
-                      className="w-full accent-accent"
-                    />
-                    <p className="text-[10px] text-text-muted mt-1">
-                      Mayor = mas consistente, Menor = mas expresivo
-                    </p>
-                  </div>
-
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="text-xs font-medium text-text-secondary">
-                        Similitud
-                      </label>
-                      <span className="text-xs text-text-muted">
-                        {Math.round(settings.similarityBoost * 100)}%
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.05"
-                      value={settings.similarityBoost}
-                      onChange={(e) => setSettings({ ...settings, similarityBoost: parseFloat(e.target.value) })}
-                      className="w-full accent-accent"
-                    />
-                  </div>
-                </>
-              )}
-
-              {/* Google TTS specific - Pitch */}
-              {selectedProvider === 'google-tts' && (
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs font-medium text-text-secondary">
-                      Tono (Pitch)
-                    </label>
-                    <span className="text-xs text-text-muted">
-                      {settings.style > 0.5 ? '+' : ''}{((settings.style - 0.5) * 10).toFixed(1)}
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.05"
-                    value={settings.style}
-                    onChange={(e) => setSettings({ ...settings, style: parseFloat(e.target.value) })}
-                    className="w-full accent-accent"
-                  />
-                  <p className="text-[10px] text-text-muted mt-1">
-                    Ajusta el tono de la voz (-5 a +5)
-                  </p>
+              {/* Stability */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-medium text-text-secondary">
+                    Estabilidad
+                  </label>
+                  <span className="text-xs text-text-muted">
+                    {Math.round(settings.stability * 100)}%
+                  </span>
                 </div>
-              )}
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={settings.stability}
+                  onChange={(e) => setSettings({ ...settings, stability: parseFloat(e.target.value) })}
+                  className="w-full accent-accent"
+                />
+                <p className="text-[10px] text-text-muted mt-1">
+                  Mayor = mas consistente, Menor = mas expresivo
+                </p>
+              </div>
+
+              {/* Similarity */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-medium text-text-secondary">
+                    Similitud
+                  </label>
+                  <span className="text-xs text-text-muted">
+                    {Math.round(settings.similarityBoost * 100)}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={settings.similarityBoost}
+                  onChange={(e) => setSettings({ ...settings, similarityBoost: parseFloat(e.target.value) })}
+                  className="w-full accent-accent"
+                />
+              </div>
 
               <button
                 onClick={() => setSettings({ stability: 0.5, similarityBoost: 0.75, style: 0.5, speed: 1 })}
@@ -655,6 +631,15 @@ export function AudioGenerator() {
                 <RotateCcw className="w-3 h-3" />
                 Restablecer valores
               </button>
+            </div>
+          )}
+
+          {/* Gemini info */}
+          {showAdvanced && selectedProvider === 'google-tts' && (
+            <div className="p-4 bg-surface-elevated rounded-xl border border-border">
+              <p className="text-xs text-text-secondary">
+                Gemini TTS usa la misma API key de Google AI Studio. Las voces son multilingues y se adaptan automaticamente al idioma del texto.
+              </p>
             </div>
           )}
 
@@ -694,7 +679,7 @@ export function AudioGenerator() {
             <p className="text-xs text-center text-text-muted">
               {selectedProvider === 'elevenlabs' 
                 ? `~${selectedModel === 'eleven_multilingual_v2' ? text.length : Math.ceil(text.length / 2)} creditos ElevenLabs`
-                : `~${(text.length * 0.000016).toFixed(6)} USD Google TTS`
+                : 'Incluido en tu cuota de Gemini API'
               }
             </p>
           )}
