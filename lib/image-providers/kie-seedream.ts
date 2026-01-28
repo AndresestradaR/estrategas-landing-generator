@@ -66,13 +66,60 @@ ${creativeControls?.additionalInstructions ? `EXTRA: ${creativeControls.addition
 Create a banner IDENTICAL to the template, with only product and prices changed.`
 }
 
+/**
+ * Enhance prompt to explicitly reference input images for better product preservation.
+ * Seedream needs clear instructions to use the exact product from reference images.
+ */
+function enhancePromptWithImageReferences(prompt: string, imageCount: number): string {
+  if (imageCount === 0) return prompt
+  
+  // Check if prompt already references images
+  const hasImageRef = /image\s*\d|imagen\s*\d|reference|referencia|from\s+the\s+image/i.test(prompt)
+  if (hasImageRef) return prompt
+  
+  // Check for common product-related keywords
+  const productKeywords = [
+    'producto', 'product', 
+    'crema', 'cream', 
+    'botella', 'bottle',
+    'frasco', 'jar',
+    'caja', 'box',
+    'paquete', 'package',
+    'artículo', 'article', 'item',
+    'el producto', 'the product',
+    'con el producto', 'with the product',
+    'sosteniendo', 'holding',
+    'mostrando', 'showing',
+  ]
+  
+  const mentionsProduct = productKeywords.some(keyword => 
+    prompt.toLowerCase().includes(keyword.toLowerCase())
+  )
+  
+  if (mentionsProduct) {
+    return `${prompt}
+
+CRITICAL INSTRUCTION: The person must be holding the EXACT product shown in the reference image. Preserve the product's exact appearance including:
+- Label text and branding
+- Colors and design
+- Packaging shape and size
+- All visual details must match the reference exactly
+Do NOT create a generic or invented product - use the EXACT product from the reference image.`
+  }
+  
+  // General reference
+  return `${prompt}
+
+Use the reference image as a guide for this generation, preserving its key visual elements.`
+}
+
 export const seedreamProvider: ImageProvider = {
   id: 'seedream',
 
   async generate(request: GenerateImageRequest, apiKey: string): Promise<GenerateImageResult> {
     try {
       // Use direct prompt if provided (Studio IA), otherwise build landing prompt
-      const prompt = request.prompt && request.prompt.trim()
+      let prompt = request.prompt && request.prompt.trim()
         ? request.prompt
         : buildPrompt(request)
 
@@ -81,6 +128,15 @@ export const seedreamProvider: ImageProvider = {
       const hasTemplateUrl = request.templateUrl && request.templateUrl.startsWith('http')
       const hasProductUrls = request.productImageUrls && request.productImageUrls.length > 0
       const hasReferenceImages = hasTemplateUrl || hasProductUrls
+
+      // Count reference images
+      const imageCount = (hasTemplateUrl ? 1 : 0) + (request.productImageUrls?.length || 0)
+
+      // Enhance prompt with image references for better product preservation
+      if (hasReferenceImages) {
+        prompt = enhancePromptWithImageReferences(prompt, imageCount)
+        console.log(`[Seedream] Enhanced prompt with ${imageCount} image reference(s)`)
+      }
 
       // Get the API model ID from the selected model
       let apiModelId = request.modelId ? getApiModelId(request.modelId) : 'seedream/4.5-text-to-image'
@@ -96,7 +152,7 @@ export const seedreamProvider: ImageProvider = {
       }
 
       console.log('[Seedream] Creating task with model:', apiModelId)
-      console.log('[Seedream] Has template URL:', hasTemplateUrl, request.templateUrl?.substring(0, 50))
+      console.log('[Seedream] Has template URL:', hasTemplateUrl)
       console.log('[Seedream] Has product URLs:', hasProductUrls, request.productImageUrls?.length || 0)
 
       // Determine model version based on model ID
@@ -116,7 +172,6 @@ export const seedreamProvider: ImageProvider = {
           quality: is4K ? 'high' : 'basic',
         }
         // Add image_urls for edit mode
-        // IMPORTANT: KIE.ai requires PUBLIC URLs only!
         if (hasReferenceImages) {
           const imageUrls: string[] = []
 
@@ -200,6 +255,7 @@ export const seedreamProvider: ImageProvider = {
 
       console.log('[Seedream] Input:', JSON.stringify({
         ...input,
+        prompt: input.prompt?.substring(0, 100) + '...',
         image_urls: input.image_urls?.length || 0,
       }))
 

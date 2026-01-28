@@ -5,66 +5,28 @@ import { cn } from '@/lib/utils/cn'
 import {
   Video,
   ChevronDown,
-  Upload,
   ImageIcon,
   Sparkles,
   Loader2,
   Download,
-  Play,
   X,
   Check,
-  Type,
-  Eye,
+  Clock,
+  Zap,
+  Film,
+  Volume2,
+  VolumeX,
+  Layers,
+  Play,
 } from 'lucide-react'
+import {
+  VIDEO_MODELS,
+  VIDEO_COMPANY_GROUPS,
+  type VideoModelId,
+  type VideoModelConfig,
+} from '@/lib/video-providers/types'
 
-type VideoModel = 'kling-2.1' | 'kling-2.6' | 'sora-2' | 'veo-3'
-type VideoDuration = '5s' | '10s'
 type VideoAspectRatio = '16:9' | '9:16' | '1:1'
-type PromptMode = 'text' | 'visual'
-
-interface VideoModelConfig {
-  id: VideoModel
-  name: string
-  description: string
-  company: string
-  price: string
-  color: string
-}
-
-const VIDEO_MODELS: VideoModelConfig[] = [
-  {
-    id: 'kling-2.1',
-    name: 'Kling 2.1',
-    description: 'Alta calidad, movimientos naturales',
-    company: 'Kuaishou',
-    price: '~$0.10/5s',
-    color: 'from-blue-500 to-cyan-500',
-  },
-  {
-    id: 'kling-2.6',
-    name: 'Kling 2.6',
-    description: 'Ultima version, mejor coherencia',
-    company: 'Kuaishou',
-    price: '~$0.15/5s',
-    color: 'from-blue-600 to-indigo-500',
-  },
-  {
-    id: 'sora-2',
-    name: 'Sora 2',
-    description: 'OpenAI - Cinematografico',
-    company: 'OpenAI',
-    price: '~$0.20/5s',
-    color: 'from-green-500 to-emerald-500',
-  },
-  {
-    id: 'veo-3',
-    name: 'Veo 3',
-    description: 'Google - Realismo extremo',
-    company: 'Google',
-    price: '~$0.18/5s',
-    color: 'from-purple-500 to-pink-500',
-  },
-]
 
 interface GeneratedVideo {
   id: string
@@ -73,65 +35,191 @@ interface GeneratedVideo {
   model: string
   timestamp: Date
   duration: string
+  aspectRatio: string
+}
+
+// Tag styling config
+const TAG_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
+  NEW: { label: 'NUEVO', color: 'bg-green-500/20 text-green-400 border-green-500/30', icon: <Sparkles className="w-2.5 h-2.5" /> },
+  FAST: { label: 'RÁPIDO', color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30', icon: <Zap className="w-2.5 h-2.5" /> },
+  PREMIUM: { label: 'PREMIUM', color: 'bg-purple-500/20 text-purple-400 border-purple-500/30', icon: <Sparkles className="w-2.5 h-2.5" /> },
+  AUDIO: { label: 'AUDIO', color: 'bg-blue-500/20 text-blue-400 border-blue-500/30', icon: <Volume2 className="w-2.5 h-2.5" /> },
+  REFERENCES: { label: 'REFS', color: 'bg-orange-500/20 text-orange-400 border-orange-500/30', icon: <ImageIcon className="w-2.5 h-2.5" /> },
+  MULTI_SHOTS: { label: 'MULTI-SHOT', color: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30', icon: <Layers className="w-2.5 h-2.5" /> },
+  RECOMENDADO: { label: '⭐ TOP', color: 'bg-accent/20 text-accent border-accent/30', icon: null },
+  IMG2VID: { label: 'IMG→VID', color: 'bg-pink-500/20 text-pink-400 border-pink-500/30', icon: <Film className="w-2.5 h-2.5" /> },
 }
 
 export function VideoGenerator() {
-  // Model selection
-  const [selectedModel, setSelectedModel] = useState<VideoModel>('kling-2.1')
+  // Model selection - default to an affordable recommended model
+  const [selectedModel, setSelectedModel] = useState<VideoModelId>('hailuo-2.3-standard')
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false)
 
-  // References
-  const [startImage, setStartImage] = useState<File | null>(null)
-  const [endImage, setEndImage] = useState<File | null>(null)
-
-  // Prompt mode
-  const [promptMode, setPromptMode] = useState<PromptMode>('text')
+  // Input image (for image-to-video)
+  const [inputImage, setInputImage] = useState<{ file: File; preview: string } | null>(null)
 
   // Generation options
   const [prompt, setPrompt] = useState('')
-  const [duration, setDuration] = useState<VideoDuration>('5s')
+  const [duration, setDuration] = useState<number>(6)
   const [aspectRatio, setAspectRatio] = useState<VideoAspectRatio>('16:9')
+  const [resolution, setResolution] = useState<string>('768p')
+  const [enableAudio, setEnableAudio] = useState(true)
 
   // State
   const [isGenerating, setIsGenerating] = useState(false)
+  const [generatingStatus, setGeneratingStatus] = useState<string>('')
   const [generatedVideos, setGeneratedVideos] = useState<GeneratedVideo[]>([])
+  const [error, setError] = useState<string | null>(null)
 
   // Refs
-  const startImageRef = useRef<HTMLInputElement>(null)
-  const endImageRef = useRef<HTMLInputElement>(null)
+  const inputImageRef = useRef<HTMLInputElement>(null)
 
-  const currentModel = VIDEO_MODELS.find((m) => m.id === selectedModel)!
+  const currentModel = VIDEO_MODELS[selectedModel]
 
-  const handleGenerate = async () => {
-    if (!prompt.trim()) {
-      return
+  // Poll for video status
+  const pollForStatus = async (taskId: string): Promise<{ success: boolean; videoUrl?: string; error?: string }> => {
+    const maxAttempts = 200 // ~10 minutes at 3s intervals
+    const interval = 3000 // 3 seconds
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        setGeneratingStatus(`Procesando video... (${Math.floor(attempt * 3 / 60)}:${String((attempt * 3) % 60).padStart(2, '0')})`)
+
+        const response = await fetch(`/api/studio/video-status?taskId=${taskId}`)
+        const data = await response.json()
+
+        if (data.status === 'completed' && data.videoUrl) {
+          return { success: true, videoUrl: data.videoUrl }
+        }
+
+        if (data.status === 'failed') {
+          return { success: false, error: data.error || 'Error al generar video' }
+        }
+
+        // Still processing, wait and try again
+        await new Promise(resolve => setTimeout(resolve, interval))
+      } catch (err) {
+        console.error('Polling error:', err)
+        // Continue polling even if one request fails
+        await new Promise(resolve => setTimeout(resolve, interval))
+      }
     }
 
-    setIsGenerating(true)
+    return { success: false, error: 'Timeout: el video tardó demasiado en generarse' }
+  }
 
-    // Simulate generation (API not connected yet)
-    setTimeout(() => {
+  const handleGenerate = async () => {
+    if (!prompt.trim()) return
+
+    setIsGenerating(true)
+    setError(null)
+    setGeneratingStatus('Iniciando generación...')
+
+    try {
+      // Convert image to base64 if present
+      let imageBase64: string | undefined
+
+      if (inputImage && currentModel.supportsStartEndFrames) {
+        setGeneratingStatus('Subiendo imagen...')
+        imageBase64 = await fileToBase64(inputImage.file)
+      }
+
+      setGeneratingStatus('Creando tarea de video...')
+
+      const response = await fetch('/api/studio/generate-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          modelId: selectedModel,
+          prompt,
+          duration,
+          aspectRatio,
+          resolution,
+          enableAudio: currentModel.supportsAudio ? enableAudio : false,
+          imageBase64,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!data.success) {
+        throw new Error(data.error || 'Error al iniciar generación')
+      }
+
+      if (!data.taskId) {
+        throw new Error('No se recibió taskId del servidor')
+      }
+
+      // Poll for result from frontend
+      setGeneratingStatus('Video en cola, esperando...')
+      const result = await pollForStatus(data.taskId)
+
+      if (!result.success) {
+        throw new Error(result.error || 'Error al generar video')
+      }
+
+      // Add to gallery
+      setGeneratedVideos((prev) => [
+        {
+          id: Date.now().toString(),
+          url: result.videoUrl!,
+          prompt,
+          model: currentModel.name,
+          timestamp: new Date(),
+          duration: `${duration}s`,
+          aspectRatio,
+        },
+        ...prev,
+      ])
+
+      setGeneratingStatus('')
+    } catch (err: any) {
+      setError(err.message)
+      setGeneratingStatus('')
+    } finally {
       setIsGenerating(false)
-      // This would be the actual API call
-      // For now, just show a message that it's not connected
-    }, 2000)
+    }
+  }
+
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const result = reader.result as string
+        resolve(result)
+      }
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
   }
 
   const handleFileSelect = (
     e: React.ChangeEvent<HTMLInputElement>,
-    setter: (file: File | null) => void
+    setter: (value: { file: File; preview: string } | null) => void
   ) => {
     const file = e.target.files?.[0]
     if (file) {
-      setter(file)
+      setter({ file, preview: URL.createObjectURL(file) })
     }
+  }
+
+  const getDurationOptions = () => {
+    const range = currentModel.durationRange.match(/(\d+)-(\d+)/)
+    if (!range) return [5, 10]
+    const min = parseInt(range[1])
+    const max = parseInt(range[2])
+    const options = []
+    for (let i = min; i <= max; i++) {
+      options.push(i)
+    }
+    return options
   }
 
   return (
     <div className="flex gap-6 h-[calc(100vh-200px)] min-h-[600px]">
       {/* Left Panel - Controls */}
-      <div className="w-[380px] flex-shrink-0 bg-surface rounded-2xl border border-border p-5 overflow-y-auto">
-        <div className="space-y-6">
+      <div className="w-[420px] flex-shrink-0 bg-surface rounded-2xl border border-border p-5 overflow-y-auto">
+        <div className="space-y-5">
           {/* Model Selector */}
           <div>
             <label className="block text-sm font-medium text-text-secondary mb-2">
@@ -143,20 +231,15 @@ export function VideoGenerator() {
                 className="w-full flex items-center justify-between px-4 py-3 bg-surface-elevated border border-border rounded-xl hover:border-accent/50 transition-colors"
               >
                 <div className="flex items-center gap-3">
-                  <div
-                    className={cn(
-                      'w-8 h-8 rounded-lg flex items-center justify-center bg-gradient-to-br',
-                      currentModel.color
-                    )}
-                  >
-                    <Video className="w-4 h-4 text-white" />
+                  <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-gradient-to-br from-accent/20 to-accent/5 border border-accent/20">
+                    <Video className="w-5 h-5 text-accent" />
                   </div>
                   <div className="text-left">
                     <p className="text-sm font-medium text-text-primary">
                       {currentModel.name}
                     </p>
                     <p className="text-xs text-text-secondary">
-                      {currentModel.company} · {currentModel.price}
+                      {currentModel.companyName} · {currentModel.priceRange}
                     </p>
                   </div>
                 </div>
@@ -169,168 +252,145 @@ export function VideoGenerator() {
               </button>
 
               {isModelDropdownOpen && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-surface-elevated border border-border rounded-xl shadow-xl z-50 p-2">
-                  {VIDEO_MODELS.map((model) => (
-                    <button
-                      key={model.id}
-                      onClick={() => {
-                        setSelectedModel(model.id)
-                        setIsModelDropdownOpen(false)
-                      }}
-                      className={cn(
-                        'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors',
-                        selectedModel === model.id
-                          ? 'bg-accent/10 text-accent'
-                          : 'hover:bg-border/50 text-text-primary'
-                      )}
-                    >
-                      <div
-                        className={cn(
-                          'w-6 h-6 rounded flex items-center justify-center bg-gradient-to-br',
-                          model.color
-                        )}
-                      >
-                        <Video className="w-3 h-3 text-white" />
-                      </div>
-                      <div className="flex-1 text-left">
-                        <p className="text-sm font-medium">{model.name}</p>
-                        <p className="text-xs text-text-secondary">
-                          {model.description}
-                        </p>
-                      </div>
-                      {selectedModel === model.id && (
-                        <Check className="w-4 h-4 text-accent" />
-                      )}
-                    </button>
+                <div className="absolute top-full left-0 right-0 mt-2 bg-surface-elevated border border-border rounded-xl shadow-xl z-50 p-2 max-h-[400px] overflow-y-auto">
+                  {VIDEO_COMPANY_GROUPS.map((group) => (
+                    <div key={group.id} className="mb-3 last:mb-0">
+                      <p className="px-3 py-1.5 text-xs font-semibold text-text-secondary uppercase tracking-wider">
+                        {group.name}
+                      </p>
+                      {group.models.map((model) => (
+                        <button
+                          key={model.id}
+                          onClick={() => {
+                            setSelectedModel(model.id)
+                            setResolution(model.defaultResolution)
+                            const range = model.durationRange.match(/(\d+)-(\d+)/)
+                            if (range) {
+                              setDuration(parseInt(range[1]))
+                            }
+                            setIsModelDropdownOpen(false)
+                          }}
+                          className={cn(
+                            'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors',
+                            selectedModel === model.id
+                              ? 'bg-accent/10 text-accent'
+                              : 'hover:bg-border/50 text-text-primary'
+                          )}
+                        >
+                          <div className={cn(
+                            'w-8 h-8 rounded-lg flex items-center justify-center bg-gradient-to-br',
+                            group.color
+                          )}>
+                            <Video className="w-4 h-4 text-white" />
+                          </div>
+                          <div className="flex-1 text-left">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="text-sm font-medium">{model.name}</p>
+                              {model.tags?.slice(0, 3).map((tag) => {
+                                const config = TAG_CONFIG[tag]
+                                if (!config) return null
+                                return (
+                                  <span
+                                    key={tag}
+                                    className={cn(
+                                      'inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium border',
+                                      config.color
+                                    )}
+                                  >
+                                    {config.icon}
+                                    {config.label}
+                                  </span>
+                                )
+                              })}
+                            </div>
+                            <p className="text-xs text-text-secondary">
+                              {model.durationRange} · {model.priceRange}
+                            </p>
+                          </div>
+                          {selectedModel === model.id && (
+                            <Check className="w-4 h-4 text-accent" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
                   ))}
                 </div>
               )}
             </div>
           </div>
 
-          {/* References */}
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-2">
-              Referencias (Transiciones)
-            </label>
-            <div className="flex gap-3">
-              <input
-                ref={startImageRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => handleFileSelect(e, setStartImage)}
-              />
-              <input
-                ref={endImageRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => handleFileSelect(e, setEndImage)}
-              />
+          {/* Model Features */}
+          <div className="flex flex-wrap gap-2">
+            {currentModel.supportsAudio && (
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                <Volume2 className="w-3 h-3" /> Audio
+              </span>
+            )}
+            {currentModel.supportsStartEndFrames && (
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                <Film className="w-3 h-3" /> Image-to-Video
+              </span>
+            )}
+            {currentModel.supportsMultiShots && (
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                <Layers className="w-3 h-3" /> Multi-shots
+              </span>
+            )}
+          </div>
 
+          {/* Input Image (for image-to-video) */}
+          {currentModel.supportsStartEndFrames && (
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-2">
+                Imagen de entrada (opcional)
+              </label>
+              <input
+                ref={inputImageRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => handleFileSelect(e, setInputImage)}
+              />
               <button
-                onClick={() => startImageRef.current?.click()}
+                onClick={() => inputImageRef.current?.click()}
                 className={cn(
-                  'flex-1 flex flex-col items-center justify-center gap-2 p-4 rounded-xl border border-dashed transition-colors aspect-video',
-                  startImage
-                    ? 'border-accent bg-accent/10'
+                  'w-full flex items-center justify-center gap-3 p-4 rounded-xl border border-dashed transition-colors',
+                  inputImage
+                    ? 'border-accent bg-accent/5'
                     : 'border-border hover:border-accent/50'
                 )}
               >
-                {startImage ? (
-                  <div className="relative w-full h-full">
+                {inputImage ? (
+                  <div className="relative w-full aspect-video">
                     <img
-                      src={URL.createObjectURL(startImage)}
-                      alt="Start"
+                      src={inputImage.preview}
+                      alt="Input"
                       className="w-full h-full object-cover rounded-lg"
                     />
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
-                        setStartImage(null)
+                        setInputImage(null)
                       }}
-                      className="absolute top-1 right-1 p-1 bg-error rounded-full"
+                      className="absolute top-2 right-2 p-1.5 bg-error/90 rounded-full hover:bg-error transition-colors"
                     >
                       <X className="w-3 h-3 text-white" />
                     </button>
                   </div>
                 ) : (
                   <>
-                    <ImageIcon className="w-6 h-6 text-text-secondary" />
-                    <span className="text-xs text-text-secondary">Imagen inicial</span>
+                    <ImageIcon className="w-5 h-5 text-text-secondary" />
+                    <span className="text-sm text-text-secondary">
+                      Subir imagen (convierte a video)
+                    </span>
                   </>
                 )}
               </button>
-
-              <button
-                onClick={() => endImageRef.current?.click()}
-                className={cn(
-                  'flex-1 flex flex-col items-center justify-center gap-2 p-4 rounded-xl border border-dashed transition-colors aspect-video',
-                  endImage
-                    ? 'border-accent bg-accent/10'
-                    : 'border-border hover:border-accent/50'
-                )}
-              >
-                {endImage ? (
-                  <div className="relative w-full h-full">
-                    <img
-                      src={URL.createObjectURL(endImage)}
-                      alt="End"
-                      className="w-full h-full object-cover rounded-lg"
-                    />
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setEndImage(null)
-                      }}
-                      className="absolute top-1 right-1 p-1 bg-error rounded-full"
-                    >
-                      <X className="w-3 h-3 text-white" />
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <ImageIcon className="w-6 h-6 text-text-secondary" />
-                    <span className="text-xs text-text-secondary">Imagen final</span>
-                  </>
-                )}
-              </button>
+              <p className="text-xs text-text-muted mt-1">
+                Sin imagen = text-to-video. Con imagen = image-to-video.
+              </p>
             </div>
-          </div>
-
-          {/* Prompt Mode Toggle */}
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-2">
-              Tipo de prompt
-            </label>
-            <div className="flex p-1 bg-surface-elevated rounded-lg">
-              <button
-                onClick={() => setPromptMode('text')}
-                className={cn(
-                  'flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors',
-                  promptMode === 'text'
-                    ? 'bg-accent text-background'
-                    : 'text-text-secondary hover:text-text-primary'
-                )}
-              >
-                <Type className="w-4 h-4" />
-                Texto
-              </button>
-              <button
-                onClick={() => setPromptMode('visual')}
-                className={cn(
-                  'flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors',
-                  promptMode === 'visual'
-                    ? 'bg-accent text-background'
-                    : 'text-text-secondary hover:text-text-primary'
-                )}
-              >
-                <Eye className="w-4 h-4" />
-                Visual
-              </button>
-            </div>
-          </div>
+          )}
 
           {/* Prompt */}
           <div>
@@ -340,30 +400,47 @@ export function VideoGenerator() {
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder={
-                promptMode === 'text'
-                  ? 'Describe el video que quieres generar...'
-                  : 'Describe visualmente la escena, movimientos de camara, transiciones...'
-              }
-              rows={5}
+              placeholder="Describe el video que quieres generar..."
+              rows={4}
               className="w-full px-4 py-3 bg-surface-elevated border border-border rounded-xl text-text-primary placeholder:text-text-muted resize-none focus:outline-none focus:ring-2 focus:ring-accent/50 focus:border-accent transition-all"
             />
           </div>
 
-          {/* Options */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* Options Grid */}
+          <div className="grid grid-cols-3 gap-3">
             {/* Duration */}
             <div>
               <label className="block text-xs font-medium text-text-secondary mb-1.5">
-                Duracion
+                Duración
               </label>
               <select
                 value={duration}
-                onChange={(e) => setDuration(e.target.value as VideoDuration)}
+                onChange={(e) => setDuration(parseInt(e.target.value))}
                 className="w-full px-3 py-2 bg-surface-elevated border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/50"
               >
-                <option value="5s">5 segundos</option>
-                <option value="10s">10 segundos</option>
+                {getDurationOptions().map((d) => (
+                  <option key={d} value={d}>
+                    {d}s
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Resolution */}
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-1.5">
+                Resolución
+              </label>
+              <select
+                value={resolution}
+                onChange={(e) => setResolution(e.target.value)}
+                className="w-full px-3 py-2 bg-surface-elevated border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/50"
+              >
+                {currentModel.resolutions.map((res) => (
+                  <option key={res} value={res}>
+                    {res}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -377,12 +454,54 @@ export function VideoGenerator() {
                 onChange={(e) => setAspectRatio(e.target.value as VideoAspectRatio)}
                 className="w-full px-3 py-2 bg-surface-elevated border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/50"
               >
-                <option value="16:9">16:9 (Horizontal)</option>
-                <option value="9:16">9:16 (Vertical)</option>
-                <option value="1:1">1:1 (Cuadrado)</option>
+                <option value="16:9">16:9</option>
+                <option value="9:16">9:16</option>
+                <option value="1:1">1:1</option>
               </select>
             </div>
           </div>
+
+          {/* Audio Toggle */}
+          {currentModel.supportsAudio && (
+            <div className="flex items-center justify-between p-3 bg-surface-elevated rounded-xl border border-border">
+              <div className="flex items-center gap-3">
+                {enableAudio ? (
+                  <Volume2 className="w-5 h-5 text-accent" />
+                ) : (
+                  <VolumeX className="w-5 h-5 text-text-secondary" />
+                )}
+                <div>
+                  <p className="text-sm font-medium text-text-primary">
+                    Generar Audio
+                  </p>
+                  <p className="text-xs text-text-secondary">
+                    Audio ambiental generado por IA
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEnableAudio(!enableAudio)}
+                className={cn(
+                  'w-12 h-6 rounded-full transition-colors relative',
+                  enableAudio ? 'bg-accent' : 'bg-border'
+                )}
+              >
+                <div
+                  className={cn(
+                    'absolute top-1 w-4 h-4 rounded-full bg-white transition-transform',
+                    enableAudio ? 'translate-x-7' : 'translate-x-1'
+                  )}
+                />
+              </button>
+            </div>
+          )}
+
+          {/* Error */}
+          {error && (
+            <div className="p-3 bg-error/10 border border-error/20 rounded-xl">
+              <p className="text-sm text-error">{error}</p>
+            </div>
+          )}
 
           {/* Generate Button */}
           <button
@@ -398,7 +517,7 @@ export function VideoGenerator() {
             {isGenerating ? (
               <>
                 <Loader2 className="w-5 h-5 animate-spin" />
-                Generando...
+                {generatingStatus || 'Generando...'}
               </>
             ) : (
               <>
@@ -407,16 +526,6 @@ export function VideoGenerator() {
               </>
             )}
           </button>
-
-          {/* Coming Soon Notice */}
-          <div className="p-4 bg-warning/10 border border-warning/20 rounded-xl">
-            <p className="text-sm text-warning font-medium">
-              API de video en desarrollo
-            </p>
-            <p className="text-xs text-text-secondary mt-1">
-              La generacion de video estara disponible proximamente.
-            </p>
-          </div>
         </div>
       </div>
 
@@ -424,7 +533,7 @@ export function VideoGenerator() {
       <div className="flex-1 bg-surface rounded-2xl border border-border p-5 overflow-hidden flex flex-col">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-text-primary">
-            Videos ({generatedVideos.length})
+            Galería ({generatedVideos.length})
           </h3>
         </div>
 
@@ -435,7 +544,7 @@ export function VideoGenerator() {
                 <Video className="w-8 h-8 text-text-secondary" />
               </div>
               <p className="text-text-secondary">
-                Tus videos generados apareceran aqui
+                Tus videos generados aparecerán aquí
               </p>
             </div>
           </div>
@@ -445,20 +554,43 @@ export function VideoGenerator() {
               {generatedVideos.map((video) => (
                 <div
                   key={video.id}
-                  className="group relative aspect-video rounded-xl overflow-hidden bg-surface-elevated"
+                  className="group relative rounded-xl overflow-hidden bg-surface-elevated"
+                  style={{
+                    aspectRatio:
+                      video.aspectRatio === '16:9'
+                        ? '16/9'
+                        : video.aspectRatio === '9:16'
+                        ? '9/16'
+                        : '1/1',
+                  }}
                 >
                   <video
                     src={video.url}
                     className="w-full h-full object-cover"
                     controls
+                    poster=""
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                     <div className="absolute bottom-0 left-0 right-0 p-3">
                       <p className="text-xs text-white/80 line-clamp-2">
                         {video.prompt}
                       </p>
+                      <p className="text-[10px] text-white/60 mt-1">
+                        {video.model} · {video.duration}
+                      </p>
                     </div>
                   </div>
+                  <button
+                    onClick={() => {
+                      const a = document.createElement('a')
+                      a.href = video.url
+                      a.download = `video-${video.id}.mp4`
+                      a.click()
+                    }}
+                    className="absolute top-2 right-2 p-2 bg-black/50 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
+                  >
+                    <Download className="w-4 h-4 text-white" />
+                  </button>
                 </div>
               ))}
             </div>

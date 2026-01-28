@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { ChevronDown, Sparkles, Zap, Image as ImageIcon, Cpu, Star, Lock, Flame, Clock, Crown, Type } from 'lucide-react'
+import { ChevronDown, Sparkles, Zap, Image as ImageIcon, Cpu, Star, Lock, Flame, Clock, Crown, Type, FileText } from 'lucide-react'
 import {
   ImageModelId,
   ImageProviderCompany,
@@ -45,6 +45,7 @@ const TAG_CONFIG: Record<ModelTag, { label: string; color: string; icon: React.R
   HD: { label: 'HD', color: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30', icon: <Sparkles className="w-2.5 h-2.5" /> },
   '4K': { label: '4K', color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30', icon: <Crown className="w-2.5 h-2.5" /> },
   RECOMENDADO: { label: 'RECOMENDADO', color: 'bg-yellow-500/20 text-yellow-500 border-yellow-500/30', icon: <Star className="w-2.5 h-2.5 fill-yellow-500" /> },
+  TEXT_ONLY: { label: 'SOLO TEXTO', color: 'bg-gray-500/20 text-gray-400 border-gray-500/30', icon: <FileText className="w-2.5 h-2.5" /> },
 }
 
 export default function ModelSelector({
