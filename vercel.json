@@ -1,0 +1,25 @@
+{
+  "functions": {
+    "app/api/studio/generate-image/route.ts": {
+      "maxDuration": 120
+    },
+    "app/api/studio/generate-video/route.ts": {
+      "maxDuration": 120
+    },
+    "app/api/studio/tools/route.ts": {
+      "maxDuration": 120
+    },
+    "app/api/generate-landing/route.ts": {
+      "maxDuration": 120
+    },
+    "app/api/generate/route.ts": {
+      "maxDuration": 120
+    },
+    "app/api/edit-section/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/enhance-prompt/route.ts": {
+      "maxDuration": 30
+    }
+  }
+}
