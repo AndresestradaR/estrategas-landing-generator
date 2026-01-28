@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { listVoices as listElevenLabsVoices } from '@/lib/audio-providers/elevenlabs'
-import { listVoices as listGoogleVoices } from '@/lib/audio-providers/google-tts'
+import { listVoices as listGeminiVoices } from '@/lib/audio-providers/google-tts'
 
 export async function GET(req: NextRequest) {
   try {
@@ -33,16 +33,17 @@ export async function GET(req: NextRequest) {
         total: result.voices.length,
       })
 
-    } else if (provider === 'google-tts' || provider === 'google') {
-      const apiKey = process.env.GOOGLE_TTS_API_KEY || process.env.GOOGLE_API_KEY
+    } else if (provider === 'google-tts' || provider === 'google' || provider === 'gemini') {
+      // Use GOOGLE_API_KEY or GEMINI_API_KEY from AI Studio
+      const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY
       if (!apiKey) {
         return NextResponse.json(
-          { success: false, error: 'Google TTS API key not configured. Add GOOGLE_TTS_API_KEY to env.' },
+          { success: false, error: 'Gemini API key not configured. Add GOOGLE_API_KEY or GEMINI_API_KEY to env.' },
           { status: 500 }
         )
       }
 
-      const result = await listGoogleVoices(apiKey)
+      const result = await listGeminiVoices(apiKey)
 
       if (!result.success) {
         return NextResponse.json(
@@ -57,8 +58,7 @@ export async function GET(req: NextRequest) {
         const searchLower = search.toLowerCase()
         voices = voices.filter(v => 
           v.name.toLowerCase().includes(searchLower) ||
-          v.description?.toLowerCase().includes(searchLower) ||
-          v.accent?.toLowerCase().includes(searchLower)
+          v.description?.toLowerCase().includes(searchLower)
         )
       }
 
@@ -78,9 +78,9 @@ export async function GET(req: NextRequest) {
           return { voices: result.voices || [], provider: 'elevenlabs' }
         })(),
         (async () => {
-          const apiKey = process.env.GOOGLE_TTS_API_KEY || process.env.GOOGLE_API_KEY
+          const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY
           if (!apiKey) return { voices: [], provider: 'google-tts' }
-          const result = await listGoogleVoices(apiKey)
+          const result = await listGeminiVoices(apiKey)
           return { voices: result.voices || [], provider: 'google-tts' }
         })(),
       ])
