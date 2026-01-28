@@ -11,7 +11,12 @@ import {
   type ImageModelId,
 } from '@/lib/image-providers'
 
+// Mark this route as requiring extended timeout
+export const maxDuration = 120 // 2 minutes max
+
 export async function POST(request: Request) {
+  const startTime = Date.now()
+  
   try {
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -51,14 +56,16 @@ export async function POST(request: Request) {
       )
     }
 
-    // Get API keys from profile - EXACTLY like generate-landing
+    console.log(`[Studio] Request received - Model: ${modelId}, User: ${user.id.substring(0, 8)}...`)
+
+    // Get API keys from profile
     const { data: profile } = await supabase
       .from('profiles')
       .select('google_api_key, openai_api_key, kie_api_key, bfl_api_key')
       .eq('id', user.id)
       .single()
 
-    // Build API keys object - EXACTLY like generate-landing
+    // Build API keys object
     const apiKeys: {
       gemini?: string
       openai?: string
@@ -82,7 +89,7 @@ export async function POST(request: Request) {
     // Get provider from model
     const selectedProvider = modelIdToProviderType(modelId)
 
-    // Validate we have the required API key - EXACTLY like generate-landing
+    // Validate we have the required API key
     const providerKeyMap: Record<ImageProviderType, keyof typeof apiKeys> = {
       gemini: 'gemini',
       openai: 'openai',
@@ -114,36 +121,43 @@ export async function POST(request: Request) {
     }
 
     // Build generation request
-    // KEY FIX: Pass the user's prompt DIRECTLY in the prompt field
-    // This way gemini.ts will use it directly instead of buildPrompt()
     const generateRequest: GenerateImageRequest = {
       provider: selectedProvider,
       modelId: modelId,
-      prompt: prompt, // DIRECT prompt from user (this is the fix!)
+      prompt: prompt,
       productImagesBase64: productImagesBase64.length > 0 ? productImagesBase64 : undefined,
       aspectRatio: aspectRatio as '9:16' | '1:1' | '16:9',
     }
 
-    console.log(`[Studio] Generating image with ${selectedProvider}, model: ${modelId}`)
-    console.log(`[Studio] Prompt: ${prompt.substring(0, 100)}...`)
+    console.log(`[Studio] Starting generation with ${selectedProvider}/${modelId}`)
+    console.log(`[Studio] Prompt (first 100 chars): ${prompt.substring(0, 100)}...`)
+    if (productImagesBase64.length > 0) {
+      console.log(`[Studio] Reference images: ${productImagesBase64.length}`)
+    }
 
-    // Generate image - EXACTLY like generate-landing
+    // Generate image
     let result = await generateImage(generateRequest, apiKeys)
 
-    // For async providers, poll for result - EXACTLY like generate-landing
+    // For async providers (KIE, BFL), poll for result
+    // Use shorter timeout to stay within Vercel limits
     if (result.success && result.status === 'processing' && result.taskId) {
-      console.log(`[Studio] Task created: ${result.taskId}, polling for result...`)
+      console.log(`[Studio] Async task created: ${result.taskId}, polling...`)
 
       const apiKey = apiKeys[requiredKey]!
+      const elapsedMs = Date.now() - startTime
+      const remainingMs = Math.max(100000 - elapsedMs, 30000) // At least 30s, max until 100s total
+
       result = await pollForResult(selectedProvider, result.taskId, apiKey, {
-        maxAttempts: 120,
+        maxAttempts: Math.floor(remainingMs / 1000), // 1 attempt per second
         intervalMs: 1000,
-        timeoutMs: 120000,
+        timeoutMs: remainingMs,
       })
     }
 
+    const totalTime = ((Date.now() - startTime) / 1000).toFixed(1)
+
     if (!result.success || !result.imageBase64) {
-      console.error(`[Studio] Generation failed:`, result.error)
+      console.error(`[Studio] Generation failed after ${totalTime}s:`, result.error)
       return NextResponse.json({
         success: false,
         error: result.error || 'No se pudo generar la imagen',
@@ -151,7 +165,7 @@ export async function POST(request: Request) {
       }, { status: 200 })
     }
 
-    console.log(`[Studio] Image generated successfully with ${selectedProvider}`)
+    console.log(`[Studio] ✓ Image generated successfully in ${totalTime}s with ${selectedProvider}`)
 
     return NextResponse.json({
       success: true,
@@ -161,7 +175,22 @@ export async function POST(request: Request) {
     })
 
   } catch (error: any) {
-    console.error('[Studio] Generate error:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    const totalTime = ((Date.now() - startTime) / 1000).toFixed(1)
+    console.error(`[Studio] Error after ${totalTime}s:`, error.message)
+    
+    // Return user-friendly error messages
+    let userMessage = 'Error interno del servidor'
+    if (error.message?.includes('timeout') || error.message?.includes('tardó demasiado')) {
+      userMessage = 'La generación tardó demasiado. Intenta de nuevo.'
+    } else if (error.message?.includes('API key')) {
+      userMessage = error.message
+    } else if (error.message?.includes('SAFETY') || error.message?.includes('bloqueado')) {
+      userMessage = 'Contenido bloqueado por filtros de seguridad. Modifica el prompt.'
+    }
+    
+    return NextResponse.json({ 
+      success: false,
+      error: userMessage 
+    }, { status: 500 })
   }
 }
