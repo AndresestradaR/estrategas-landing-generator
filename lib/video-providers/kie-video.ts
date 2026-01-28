@@ -70,7 +70,7 @@ export async function generateVideo(
 
     // Veo models use different endpoint
     if (modelConfig.useVeoEndpoint) {
-      return await generateVeoVideo(request, apiKey, apiModelId)
+      return await generateVeoVideo(request, apiKey, request.modelId)
     }
 
     // Standard models use createTask endpoint
@@ -90,21 +90,29 @@ export async function generateVideo(
  * Generate video with Veo 3.1 (special endpoint)
  * Endpoint: POST /api/v1/veo/generate
  * 
- * From docs:
- * - model: "veo3" or "veo3_fast"
+ * From KIE docs:
+ * - mode: "fast" (60 credits) or "quality" (250 credits)
  * - aspect_ratio: "16:9", "9:16", or "Auto"
  * - generationType: TEXT_2_VIDEO, FIRST_AND_LAST_FRAMES_2_VIDEO, REFERENCE_2_VIDEO
- * - imageUrls: array of public URLs
+ * - imageUrls: array of public URLs (for image-to-video)
+ * 
+ * IMPORTANT: Veo uses "mode" NOT "model" parameter!
+ * - veo-3.1 -> mode: "quality" (250 credits, ~$1.25)
+ * - veo-3-fast -> mode: "fast" (60 credits, ~$0.30)
  */
 async function generateVeoVideo(
   request: GenerateVideoRequest,
   apiKey: string,
-  model: string
+  modelId: VideoModelId
 ): Promise<GenerateVideoResult> {
+  // Determine mode based on model selection
+  // veo-3.1 = quality mode, veo-3-fast = fast mode
+  const mode = modelId === 'veo-3.1' ? 'quality' : 'fast'
+  
   const body: Record<string, any> = {
-    model: model, // veo3 or veo3_fast
+    mode: mode, // "fast" (60 credits) or "quality" (250 credits)
     prompt: request.prompt,
-    aspect_ratio: request.aspectRatio || '16:9', // Veo uses "16:9", "9:16", "Auto"
+    aspect_ratio: request.aspectRatio || '16:9', // "16:9", "9:16", "Auto"
     enableTranslation: true,
   }
 
