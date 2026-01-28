@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { listVoices } from '@/lib/audio-providers/elevenlabs'
-import { SPANISH_LATAM_VOICES } from '@/lib/audio-providers/types'
+import { listVoices as listElevenLabsVoices } from '@/lib/audio-providers/elevenlabs'
+import { listVoices as listGoogleVoices } from '@/lib/audio-providers/google-tts'
 
 export async function GET(req: NextRequest) {
   try {
@@ -8,26 +8,6 @@ export async function GET(req: NextRequest) {
     const provider = searchParams.get('provider') || 'elevenlabs'
     const search = searchParams.get('search') || undefined
     const category = searchParams.get('category') || undefined
-    const defaultsOnly = searchParams.get('defaults') === 'true'
-
-    // If requesting defaults only, return pre-configured voices
-    if (defaultsOnly) {
-      const defaultVoices = provider === 'elevenlabs' 
-        ? SPANISH_LATAM_VOICES.elevenlabs.map(v => ({
-            ...v,
-            provider: 'elevenlabs' as const,
-          }))
-        : SPANISH_LATAM_VOICES.google.map(v => ({
-            ...v,
-            provider: 'google-tts' as const,
-          }))
-
-      return NextResponse.json({
-        success: true,
-        voices: defaultVoices,
-        total: defaultVoices.length,
-      })
-    }
 
     if (provider === 'elevenlabs') {
       const apiKey = process.env.ELEVENLABS_API_KEY
@@ -38,7 +18,7 @@ export async function GET(req: NextRequest) {
         )
       }
 
-      const result = await listVoices(apiKey, { search, category })
+      const result = await listElevenLabsVoices(apiKey, { search, category })
 
       if (!result.success) {
         return NextResponse.json(
@@ -53,16 +33,68 @@ export async function GET(req: NextRequest) {
         total: result.voices.length,
       })
 
-    } else if (provider === 'google-tts') {
-      // TODO: Implement Google Cloud TTS voice listing
-      // For now, return static list
+    } else if (provider === 'google-tts' || provider === 'google') {
+      const apiKey = process.env.GOOGLE_TTS_API_KEY || process.env.GOOGLE_API_KEY
+      if (!apiKey) {
+        return NextResponse.json(
+          { success: false, error: 'Google TTS API key not configured. Add GOOGLE_TTS_API_KEY to env.' },
+          { status: 500 }
+        )
+      }
+
+      const result = await listGoogleVoices(apiKey)
+
+      if (!result.success) {
+        return NextResponse.json(
+          { success: false, error: result.error },
+          { status: 500 }
+        )
+      }
+
+      // Apply search filter if provided
+      let voices = result.voices
+      if (search) {
+        const searchLower = search.toLowerCase()
+        voices = voices.filter(v => 
+          v.name.toLowerCase().includes(searchLower) ||
+          v.description?.toLowerCase().includes(searchLower) ||
+          v.accent?.toLowerCase().includes(searchLower)
+        )
+      }
+
       return NextResponse.json({
         success: true,
-        voices: SPANISH_LATAM_VOICES.google.map(v => ({
-          ...v,
-          provider: 'google-tts' as const,
-        })),
-        total: SPANISH_LATAM_VOICES.google.length,
+        voices,
+        total: voices.length,
+      })
+
+    } else if (provider === 'all') {
+      // Return voices from all providers
+      const results = await Promise.allSettled([
+        (async () => {
+          const apiKey = process.env.ELEVENLABS_API_KEY
+          if (!apiKey) return { voices: [], provider: 'elevenlabs' }
+          const result = await listElevenLabsVoices(apiKey, { search, category })
+          return { voices: result.voices || [], provider: 'elevenlabs' }
+        })(),
+        (async () => {
+          const apiKey = process.env.GOOGLE_TTS_API_KEY || process.env.GOOGLE_API_KEY
+          if (!apiKey) return { voices: [], provider: 'google-tts' }
+          const result = await listGoogleVoices(apiKey)
+          return { voices: result.voices || [], provider: 'google-tts' }
+        })(),
+      ])
+
+      const allVoices = results
+        .filter((r): r is PromiseFulfilledResult<{ voices: any[]; provider: string }> => 
+          r.status === 'fulfilled'
+        )
+        .flatMap(r => r.value.voices)
+
+      return NextResponse.json({
+        success: true,
+        voices: allVoices,
+        total: allVoices.length,
       })
 
     } else {
