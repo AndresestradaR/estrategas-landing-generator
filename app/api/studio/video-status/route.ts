@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { decrypt } from '@/lib/services/encryption'
-import { pollForVideoResult } from '@/lib/video-providers'
+import { checkVideoStatus } from '@/lib/video-providers/kie-video'
 
 export async function GET(request: Request) {
   try {
@@ -32,12 +32,8 @@ export async function GET(request: Request) {
 
     const kieApiKey = decrypt(profile.kie_api_key)
 
-    // Check status once (no polling, just single check)
-    const result = await pollForVideoResult(taskId, kieApiKey, {
-      maxAttempts: 1,
-      intervalMs: 0,
-      timeoutMs: 10000,
-    })
+    // Single check - no polling
+    const result = await checkVideoStatus(taskId, kieApiKey)
 
     if (result.status === 'processing') {
       return NextResponse.json({
