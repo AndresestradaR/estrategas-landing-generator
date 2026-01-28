@@ -111,7 +111,7 @@ export async function listVoices(apiKey: string): Promise<ListVoicesResult> {
       gender: v.gender as 'male' | 'female',
       language: 'Multilingue',
       accent: 'Natural',
-      category: 'gemini',
+      category: 'generated' as const,
       provider: 'google-tts' as const,
     }))
 
