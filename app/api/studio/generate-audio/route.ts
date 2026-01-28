@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { generateSpeech as generateElevenLabs } from '@/lib/audio-providers/elevenlabs'
-import { generateSpeech as generateGoogleTTS } from '@/lib/audio-providers/google-tts'
+import { generateSpeech as generateGeminiTTS } from '@/lib/audio-providers/google-tts'
 import { createClient } from '@/lib/supabase/server'
-import { AUDIO_MODELS, type AudioModelId } from '@/lib/audio-providers/types'
+import { type AudioModelId } from '@/lib/audio-providers/types'
 
 export async function POST(req: NextRequest) {
   try {
@@ -80,18 +80,18 @@ export async function POST(req: NextRequest) {
         apiKey
       )
 
-    } else if (provider === 'google-tts' || provider === 'google') {
-      const apiKey = process.env.GOOGLE_TTS_API_KEY || process.env.GOOGLE_API_KEY
+    } else if (provider === 'google-tts' || provider === 'google' || provider === 'gemini') {
+      // Use GOOGLE_API_KEY or GEMINI_API_KEY from AI Studio
+      const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY
       if (!apiKey) {
         return NextResponse.json(
-          { success: false, error: 'Google TTS API key not configured. Add GOOGLE_TTS_API_KEY to env.' },
+          { success: false, error: 'Gemini API key not configured. Add GOOGLE_API_KEY or GEMINI_API_KEY to env.' },
           { status: 500 }
         )
       }
 
-      result = await generateGoogleTTS(text, voiceId, apiKey, {
-        speakingRate: settings?.speed ?? 1.0,
-        pitch: settings?.style ? (settings.style - 0.5) * 10 : 0, // Convert 0-1 to -5 to +5
+      result = await generateGeminiTTS(text, voiceId, apiKey, {
+        languageCode: languageCode === 'es' ? 'es-MX' : languageCode,
       })
 
     } else {
@@ -108,9 +108,13 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // Determine file extension based on content type
+    const isWav = result.contentType?.includes('wav')
+    const fileExt = isWav ? 'wav' : 'mp3'
+    
     // Upload to Supabase storage
     const supabase = await createClient()
-    const fileName = `audio_${Date.now()}_${Math.random().toString(36).substring(7)}.mp3`
+    const fileName = `audio_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`
     const filePath = `audio/${fileName}`
 
     const audioBuffer = Buffer.from(result.audioBase64, 'base64')
