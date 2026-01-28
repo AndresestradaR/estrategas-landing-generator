@@ -10,7 +10,6 @@ import {
   Download,
   Check,
   Mic,
-  Volume2,
   Play,
   Pause,
   RotateCcw,
@@ -18,8 +17,10 @@ import {
   Zap,
   Globe,
   AlertCircle,
+  RefreshCw,
 } from 'lucide-react'
 
+type AudioProviderId = 'elevenlabs' | 'google-tts'
 type AudioModelId = 'eleven_multilingual_v2' | 'eleven_flash_v2_5' | 'eleven_turbo_v2_5'
 
 interface Voice {
@@ -28,8 +29,9 @@ interface Voice {
   description?: string
   previewUrl?: string
   gender?: 'male' | 'female' | 'neutral'
+  accent?: string
   category?: string
-  provider: 'elevenlabs' | 'google-tts'
+  provider: AudioProviderId
   labels?: Record<string, string>
 }
 
@@ -39,6 +41,7 @@ interface GeneratedAudio {
   text: string
   voiceName: string
   model: string
+  provider: string
   timestamp: Date
   duration?: number
   charactersUsed: number
@@ -51,30 +54,52 @@ interface VoiceSettings {
   speed: number
 }
 
-// Model configurations
-const AUDIO_MODELS: Record<AudioModelId, { name: string; description: string; costLabel: string; latency: string }> = {
+// Provider configurations
+const PROVIDERS = {
+  elevenlabs: {
+    name: 'ElevenLabs',
+    description: 'Voces ultra realistas con IA',
+    icon: '🎙️',
+    color: 'from-purple-500/20 to-purple-500/5',
+    borderColor: 'border-purple-500/20',
+  },
+  'google-tts': {
+    name: 'Google TTS',
+    description: 'Neural2 y Wavenet de Google',
+    icon: '🔊',
+    color: 'from-blue-500/20 to-blue-500/5',
+    borderColor: 'border-blue-500/20',
+  },
+}
+
+// ElevenLabs model configurations
+const ELEVENLABS_MODELS: Record<AudioModelId, { name: string; description: string; costLabel: string; latency: string }> = {
   'eleven_multilingual_v2': {
     name: 'Multilingual v2',
-    description: 'Maxima calidad, 32 idiomas, emociones naturales',
-    costLabel: '1 credito/caracter',
+    description: 'Maxima calidad, 32 idiomas',
+    costLabel: '1 credito/char',
     latency: '~500ms',
   },
   'eleven_flash_v2_5': {
     name: 'Flash v2.5',
-    description: 'Ultra rapido, ideal para tiempo real',
-    costLabel: '0.5 creditos/caracter',
+    description: 'Ultra rapido, tiempo real',
+    costLabel: '0.5 creditos/char',
     latency: '~75ms',
   },
   'eleven_turbo_v2_5': {
     name: 'Turbo v2.5',
     description: 'Balance calidad/velocidad',
-    costLabel: '0.5 creditos/caracter',
+    costLabel: '0.5 creditos/char',
     latency: '~200ms',
   },
 }
 
 export function AudioGenerator() {
-  // Voice selection - no default voices, loaded from API
+  // Provider selection
+  const [selectedProvider, setSelectedProvider] = useState<AudioProviderId>('elevenlabs')
+  const [isProviderDropdownOpen, setIsProviderDropdownOpen] = useState(false)
+
+  // Voice selection
   const [selectedVoice, setSelectedVoice] = useState<Voice | null>(null)
   const [voices, setVoices] = useState<Voice[]>([])
   const [isVoiceDropdownOpen, setIsVoiceDropdownOpen] = useState(false)
@@ -82,7 +107,7 @@ export function AudioGenerator() {
   const [voiceSearch, setVoiceSearch] = useState('')
   const [voicesError, setVoicesError] = useState<string | null>(null)
 
-  // Model selection
+  // Model selection (ElevenLabs only)
   const [selectedModel, setSelectedModel] = useState<AudioModelId>('eleven_multilingual_v2')
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false)
 
@@ -105,16 +130,17 @@ export function AudioGenerator() {
   const [playingId, setPlayingId] = useState<string | null>(null)
   const audioRefs = useRef<Record<string, HTMLAudioElement>>({})
 
-  // Load voices on mount
+  // Load voices when provider changes
   useEffect(() => {
     loadVoices()
-  }, [])
+  }, [selectedProvider])
 
   const loadVoices = async () => {
     setIsLoadingVoices(true)
     setVoicesError(null)
+    setSelectedVoice(null)
     try {
-      const response = await fetch('/api/studio/voices?provider=elevenlabs')
+      const response = await fetch(`/api/studio/voices?provider=${selectedProvider}`)
       const data = await response.json()
       if (data.success && data.voices?.length > 0) {
         setVoices(data.voices)
@@ -122,7 +148,7 @@ export function AudioGenerator() {
       } else if (data.error) {
         setVoicesError(data.error)
       } else {
-        setVoicesError('No se encontraron voces en espanol. Configura tu API key de ElevenLabs.')
+        setVoicesError('No se encontraron voces. Configura la API key del proveedor.')
       }
     } catch (err) {
       console.error('Error loading voices:', err)
@@ -145,7 +171,8 @@ export function AudioGenerator() {
         body: JSON.stringify({
           text,
           voiceId: selectedVoice.id,
-          modelId: selectedModel,
+          modelId: selectedProvider === 'elevenlabs' ? selectedModel : undefined,
+          provider: selectedProvider,
           languageCode: 'es',
           settings: {
             stability: settings.stability,
@@ -162,13 +189,15 @@ export function AudioGenerator() {
         throw new Error(data.error || 'Error al generar audio')
       }
 
-      // Add to gallery
       const newAudio: GeneratedAudio = {
         id: Date.now().toString(),
         url: data.audioUrl || `data:audio/mpeg;base64,${data.audioBase64}`,
         text,
         voiceName: selectedVoice.name,
-        model: AUDIO_MODELS[selectedModel].name,
+        model: selectedProvider === 'elevenlabs' 
+          ? ELEVENLABS_MODELS[selectedModel].name 
+          : 'Google TTS',
+        provider: selectedProvider,
         timestamp: new Date(),
         charactersUsed: data.charactersUsed || text.length,
       }
@@ -189,7 +218,6 @@ export function AudioGenerator() {
       audio.pause()
       setPlayingId(null)
     } else {
-      // Pause any playing audio
       Object.values(audioRefs.current).forEach((a) => a.pause())
       audio.play()
       setPlayingId(audioId)
@@ -204,7 +232,8 @@ export function AudioGenerator() {
 
   const filteredVoices = voices.filter((v) =>
     v.name.toLowerCase().includes(voiceSearch.toLowerCase()) ||
-    v.description?.toLowerCase().includes(voiceSearch.toLowerCase())
+    v.description?.toLowerCase().includes(voiceSearch.toLowerCase()) ||
+    v.accent?.toLowerCase().includes(voiceSearch.toLowerCase())
   )
 
   const characterCount = text.length
@@ -215,66 +244,68 @@ export function AudioGenerator() {
       {/* Left Panel - Controls */}
       <div className="w-[420px] flex-shrink-0 bg-surface rounded-2xl border border-border p-5 overflow-y-auto">
         <div className="space-y-5">
-          {/* Model Selector */}
+          {/* Provider Selector */}
           <div>
             <label className="block text-sm font-medium text-text-secondary mb-2">
-              Modelo
+              Proveedor de Audio
             </label>
             <div className="relative">
               <button
-                onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
+                onClick={() => setIsProviderDropdownOpen(!isProviderDropdownOpen)}
                 className="w-full flex items-center justify-between px-4 py-3 bg-surface-elevated border border-border rounded-xl hover:border-accent/50 transition-colors"
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-gradient-to-br from-accent/20 to-accent/5 border border-accent/20">
-                    <AudioLines className="w-5 h-5 text-accent" />
+                  <div className={cn(
+                    'w-10 h-10 rounded-lg flex items-center justify-center bg-gradient-to-br text-xl',
+                    PROVIDERS[selectedProvider].color,
+                    PROVIDERS[selectedProvider].borderColor,
+                    'border'
+                  )}>
+                    {PROVIDERS[selectedProvider].icon}
                   </div>
                   <div className="text-left">
                     <p className="text-sm font-medium text-text-primary">
-                      {AUDIO_MODELS[selectedModel].name}
+                      {PROVIDERS[selectedProvider].name}
                     </p>
                     <p className="text-xs text-text-secondary">
-                      {AUDIO_MODELS[selectedModel].latency} · {AUDIO_MODELS[selectedModel].costLabel}
+                      {PROVIDERS[selectedProvider].description}
                     </p>
                   </div>
                 </div>
-                <ChevronDown
-                  className={cn(
-                    'w-5 h-5 text-text-secondary transition-transform',
-                    isModelDropdownOpen && 'rotate-180'
-                  )}
-                />
+                <ChevronDown className={cn(
+                  'w-5 h-5 text-text-secondary transition-transform',
+                  isProviderDropdownOpen && 'rotate-180'
+                )} />
               </button>
 
-              {isModelDropdownOpen && (
+              {isProviderDropdownOpen && (
                 <div className="absolute top-full left-0 right-0 mt-2 bg-surface-elevated border border-border rounded-xl shadow-xl z-50 p-2">
-                  {(Object.entries(AUDIO_MODELS) as [AudioModelId, typeof AUDIO_MODELS[AudioModelId]][]).map(
-                    ([id, model]) => (
+                  {(Object.entries(PROVIDERS) as [AudioProviderId, typeof PROVIDERS['elevenlabs']][]).map(
+                    ([id, provider]) => (
                       <button
                         key={id}
                         onClick={() => {
-                          setSelectedModel(id)
-                          setIsModelDropdownOpen(false)
+                          setSelectedProvider(id)
+                          setIsProviderDropdownOpen(false)
                         }}
                         className={cn(
                           'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors',
-                          selectedModel === id
+                          selectedProvider === id
                             ? 'bg-accent/10 text-accent'
                             : 'hover:bg-border/50 text-text-primary'
                         )}
                       >
-                        <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-gradient-to-br from-accent/20 to-accent/5">
-                          {id === 'eleven_flash_v2_5' ? (
-                            <Zap className="w-4 h-4 text-accent" />
-                          ) : (
-                            <AudioLines className="w-4 h-4 text-accent" />
-                          )}
+                        <div className={cn(
+                          'w-8 h-8 rounded-lg flex items-center justify-center bg-gradient-to-br text-lg',
+                          provider.color
+                        )}>
+                          {provider.icon}
                         </div>
                         <div className="flex-1 text-left">
-                          <p className="text-sm font-medium">{model.name}</p>
-                          <p className="text-xs text-text-secondary">{model.description}</p>
+                          <p className="text-sm font-medium">{provider.name}</p>
+                          <p className="text-xs text-text-secondary">{provider.description}</p>
                         </div>
-                        {selectedModel === id && <Check className="w-4 h-4 text-accent" />}
+                        {selectedProvider === id && <Check className="w-4 h-4 text-accent" />}
                       </button>
                     )
                   )}
@@ -283,16 +314,94 @@ export function AudioGenerator() {
             </div>
           </div>
 
+          {/* Model Selector (ElevenLabs only) */}
+          {selectedProvider === 'elevenlabs' && (
+            <div>
+              <label className="block text-sm font-medium text-text-secondary mb-2">
+                Modelo
+              </label>
+              <div className="relative">
+                <button
+                  onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-surface-elevated border border-border rounded-xl hover:border-accent/50 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-gradient-to-br from-accent/20 to-accent/5 border border-accent/20">
+                      <AudioLines className="w-5 h-5 text-accent" />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-sm font-medium text-text-primary">
+                        {ELEVENLABS_MODELS[selectedModel].name}
+                      </p>
+                      <p className="text-xs text-text-secondary">
+                        {ELEVENLABS_MODELS[selectedModel].latency} · {ELEVENLABS_MODELS[selectedModel].costLabel}
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronDown className={cn(
+                    'w-5 h-5 text-text-secondary transition-transform',
+                    isModelDropdownOpen && 'rotate-180'
+                  )} />
+                </button>
+
+                {isModelDropdownOpen && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-surface-elevated border border-border rounded-xl shadow-xl z-50 p-2">
+                    {(Object.entries(ELEVENLABS_MODELS) as [AudioModelId, typeof ELEVENLABS_MODELS[AudioModelId]][]).map(
+                      ([id, model]) => (
+                        <button
+                          key={id}
+                          onClick={() => {
+                            setSelectedModel(id)
+                            setIsModelDropdownOpen(false)
+                          }}
+                          className={cn(
+                            'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors',
+                            selectedModel === id
+                              ? 'bg-accent/10 text-accent'
+                              : 'hover:bg-border/50 text-text-primary'
+                          )}
+                        >
+                          <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-gradient-to-br from-accent/20 to-accent/5">
+                            {id === 'eleven_flash_v2_5' ? (
+                              <Zap className="w-4 h-4 text-accent" />
+                            ) : (
+                              <AudioLines className="w-4 h-4 text-accent" />
+                            )}
+                          </div>
+                          <div className="flex-1 text-left">
+                            <p className="text-sm font-medium">{model.name}</p>
+                            <p className="text-xs text-text-secondary">{model.description}</p>
+                          </div>
+                          {selectedModel === id && <Check className="w-4 h-4 text-accent" />}
+                        </button>
+                      )
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Voice Selector */}
           <div>
-            <label className="block text-sm font-medium text-text-secondary mb-2">
-              Voz Latina
-            </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-text-secondary">
+                Voz {selectedProvider === 'google-tts' ? 'Google' : 'ElevenLabs'}
+              </label>
+              <button
+                onClick={loadVoices}
+                disabled={isLoadingVoices}
+                className="text-xs text-text-secondary hover:text-accent flex items-center gap-1"
+              >
+                <RefreshCw className={cn('w-3 h-3', isLoadingVoices && 'animate-spin')} />
+                Recargar
+              </button>
+            </div>
             <div className="relative">
               {isLoadingVoices ? (
                 <div className="w-full flex items-center justify-center px-4 py-3 bg-surface-elevated border border-border rounded-xl">
                   <Loader2 className="w-5 h-5 animate-spin text-accent mr-2" />
-                  <span className="text-sm text-text-secondary">Cargando voces latinas...</span>
+                  <span className="text-sm text-text-secondary">Cargando voces...</span>
                 </div>
               ) : voicesError ? (
                 <div className="w-full px-4 py-3 bg-surface-elevated border border-error/30 rounded-xl">
@@ -322,16 +431,15 @@ export function AudioGenerator() {
                       <div className="text-left">
                         <p className="text-sm font-medium text-text-primary">{selectedVoice?.name || 'Selecciona voz'}</p>
                         <p className="text-xs text-text-secondary">
-                          {selectedVoice?.gender === 'female' ? 'Femenina' : 'Masculina'} · ElevenLabs
+                          {selectedVoice?.gender === 'female' ? 'Femenina' : 'Masculina'}
+                          {selectedVoice?.accent && ` · ${selectedVoice.accent}`}
                         </p>
                       </div>
                     </div>
-                    <ChevronDown
-                      className={cn(
-                        'w-5 h-5 text-text-secondary transition-transform',
-                        isVoiceDropdownOpen && 'rotate-180'
-                      )}
-                    />
+                    <ChevronDown className={cn(
+                      'w-5 h-5 text-text-secondary transition-transform',
+                      isVoiceDropdownOpen && 'rotate-180'
+                    )} />
                   </button>
 
                   {isVoiceDropdownOpen && (
@@ -339,7 +447,7 @@ export function AudioGenerator() {
                       <div className="p-2 border-b border-border">
                         <input
                           type="text"
-                          placeholder="Buscar voz latina..."
+                          placeholder="Buscar voz..."
                           value={voiceSearch}
                           onChange={(e) => setVoiceSearch(e.target.value)}
                           className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent/50"
@@ -379,11 +487,9 @@ export function AudioGenerator() {
                               </div>
                               <div className="flex-1 text-left">
                                 <p className="text-sm font-medium">{voice.name}</p>
-                                {voice.description && (
-                                  <p className="text-xs text-text-secondary line-clamp-1">
-                                    {voice.description}
-                                  </p>
-                                )}
+                                <p className="text-xs text-text-secondary line-clamp-1">
+                                  {voice.accent || voice.description}
+                                </p>
                               </div>
                               {selectedVoice?.id === voice.id && (
                                 <Check className="w-4 h-4 text-accent" />
@@ -403,6 +509,9 @@ export function AudioGenerator() {
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-green-500/10 text-green-400 border border-green-500/20">
               <Globe className="w-3 h-3" /> Espanol (LATAM)
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-surface-elevated text-text-secondary border border-border">
+              {PROVIDERS[selectedProvider].icon} {PROVIDERS[selectedProvider].name}
             </span>
           </div>
 
@@ -444,51 +553,6 @@ export function AudioGenerator() {
           {/* Advanced Settings */}
           {showAdvanced && (
             <div className="space-y-4 p-4 bg-surface-elevated rounded-xl border border-border">
-              {/* Stability */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-medium text-text-secondary">
-                    Estabilidad
-                  </label>
-                  <span className="text-xs text-text-muted">
-                    {Math.round(settings.stability * 100)}%
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  value={settings.stability}
-                  onChange={(e) => setSettings({ ...settings, stability: parseFloat(e.target.value) })}
-                  className="w-full accent-accent"
-                />
-                <p className="text-[10px] text-text-muted mt-1">
-                  Mayor = mas consistente, Menor = mas expresivo
-                </p>
-              </div>
-
-              {/* Similarity Boost */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-medium text-text-secondary">
-                    Similitud
-                  </label>
-                  <span className="text-xs text-text-muted">
-                    {Math.round(settings.similarityBoost * 100)}%
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  value={settings.similarityBoost}
-                  onChange={(e) => setSettings({ ...settings, similarityBoost: parseFloat(e.target.value) })}
-                  className="w-full accent-accent"
-                />
-              </div>
-
               {/* Speed */}
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -510,9 +574,82 @@ export function AudioGenerator() {
                 />
               </div>
 
-              {/* Reset */}
+              {/* ElevenLabs specific settings */}
+              {selectedProvider === 'elevenlabs' && (
+                <>
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-xs font-medium text-text-secondary">
+                        Estabilidad
+                      </label>
+                      <span className="text-xs text-text-muted">
+                        {Math.round(settings.stability * 100)}%
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value={settings.stability}
+                      onChange={(e) => setSettings({ ...settings, stability: parseFloat(e.target.value) })}
+                      className="w-full accent-accent"
+                    />
+                    <p className="text-[10px] text-text-muted mt-1">
+                      Mayor = mas consistente, Menor = mas expresivo
+                    </p>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-xs font-medium text-text-secondary">
+                        Similitud
+                      </label>
+                      <span className="text-xs text-text-muted">
+                        {Math.round(settings.similarityBoost * 100)}%
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value={settings.similarityBoost}
+                      onChange={(e) => setSettings({ ...settings, similarityBoost: parseFloat(e.target.value) })}
+                      className="w-full accent-accent"
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* Google TTS specific - Pitch */}
+              {selectedProvider === 'google-tts' && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-medium text-text-secondary">
+                      Tono (Pitch)
+                    </label>
+                    <span className="text-xs text-text-muted">
+                      {settings.style > 0.5 ? '+' : ''}{((settings.style - 0.5) * 10).toFixed(1)}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={settings.style}
+                    onChange={(e) => setSettings({ ...settings, style: parseFloat(e.target.value) })}
+                    className="w-full accent-accent"
+                  />
+                  <p className="text-[10px] text-text-muted mt-1">
+                    Ajusta el tono de la voz (-5 a +5)
+                  </p>
+                </div>
+              )}
+
               <button
-                onClick={() => setSettings({ stability: 0.5, similarityBoost: 0.75, style: 0, speed: 1 })}
+                onClick={() => setSettings({ stability: 0.5, similarityBoost: 0.75, style: 0.5, speed: 1 })}
                 className="flex items-center gap-2 text-xs text-text-secondary hover:text-accent transition-colors"
               >
                 <RotateCcw className="w-3 h-3" />
@@ -555,7 +692,10 @@ export function AudioGenerator() {
           {/* Cost estimate */}
           {text.length > 0 && (
             <p className="text-xs text-center text-text-muted">
-              ~{selectedModel === 'eleven_multilingual_v2' ? text.length : Math.ceil(text.length / 2)} creditos
+              {selectedProvider === 'elevenlabs' 
+                ? `~${selectedModel === 'eleven_multilingual_v2' ? text.length : Math.ceil(text.length / 2)} creditos ElevenLabs`
+                : `~${(text.length * 0.000016).toFixed(6)} USD Google TTS`
+              }
             </p>
           )}
         </div>
@@ -587,7 +727,6 @@ export function AudioGenerator() {
                 key={audio.id}
                 className="p-4 bg-surface-elevated rounded-xl border border-border hover:border-accent/30 transition-colors"
               >
-                {/* Hidden audio element */}
                 <audio
                   ref={(el) => { if (el) audioRefs.current[audio.id] = el }}
                   src={audio.url}
@@ -596,7 +735,6 @@ export function AudioGenerator() {
                 />
 
                 <div className="flex items-start gap-4">
-                  {/* Play button */}
                   <button
                     onClick={() => togglePlayPause(audio.id)}
                     className={cn(
@@ -613,7 +751,6 @@ export function AudioGenerator() {
                     )}
                   </button>
 
-                  {/* Info */}
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-text-primary line-clamp-2 mb-1">
                       {audio.text}
@@ -630,7 +767,6 @@ export function AudioGenerator() {
                     </div>
                   </div>
 
-                  {/* Download */}
                   <button
                     onClick={() => {
                       const a = document.createElement('a')
@@ -644,7 +780,6 @@ export function AudioGenerator() {
                   </button>
                 </div>
 
-                {/* Waveform placeholder */}
                 <div className="mt-3 h-8 bg-border/30 rounded-lg flex items-center justify-center overflow-hidden">
                   <div className="flex items-end gap-0.5 h-6">
                     {Array.from({ length: 50 }).map((_, i) => (
