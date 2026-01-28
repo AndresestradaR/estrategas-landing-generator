@@ -90,27 +90,28 @@ export async function generateVideo(
  * Generate video with Veo 3.1 (special endpoint)
  * Endpoint: POST /api/v1/veo/generate
  * 
- * From KIE docs:
- * - mode: "fast" (60 credits) or "quality" (250 credits)
+ * From KIE docs (https://docs.kie.ai/veo3-api/generate-veo-3-video):
+ * - model: "veo3" (Quality, 250 credits) or "veo3_fast" (Fast, 60 credits)
  * - aspect_ratio: "16:9", "9:16", or "Auto"
  * - generationType: TEXT_2_VIDEO, FIRST_AND_LAST_FRAMES_2_VIDEO, REFERENCE_2_VIDEO
  * - imageUrls: array of public URLs (for image-to-video)
+ * - enableTranslation: boolean (translate prompt to English)
  * 
- * IMPORTANT: Veo uses "mode" NOT "model" parameter!
- * - veo-3.1 -> mode: "quality" (250 credits, ~$1.25)
- * - veo-3-fast -> mode: "fast" (60 credits, ~$0.30)
+ * IMPORTANT: Parameter is "model" NOT "mode"!
+ * Valid values: "veo3" or "veo3_fast"
  */
 async function generateVeoVideo(
   request: GenerateVideoRequest,
   apiKey: string,
   modelId: VideoModelId
 ): Promise<GenerateVideoResult> {
-  // Determine mode based on model selection
-  // veo-3.1 = quality mode, veo-3-fast = fast mode
-  const mode = modelId === 'veo-3.1' ? 'quality' : 'fast'
+  // Map our model IDs to KIE's expected values
+  // veo-3.1 -> "veo3" (Quality, 250 credits)
+  // veo-3-fast -> "veo3_fast" (Fast, 60 credits)
+  const kieModel = modelId === 'veo-3.1' ? 'veo3' : 'veo3_fast'
   
   const body: Record<string, any> = {
-    mode: mode, // "fast" (60 credits) or "quality" (250 credits)
+    model: kieModel, // "veo3" or "veo3_fast"
     prompt: request.prompt,
     aspect_ratio: request.aspectRatio || '16:9', // "16:9", "9:16", "Auto"
     enableTranslation: true,
