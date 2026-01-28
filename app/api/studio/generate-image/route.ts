@@ -11,8 +11,53 @@ import {
   type ImageModelId,
 } from '@/lib/image-providers'
 
-// Mark this route as requiring extended timeout
+// Mark this route as requiring extended timeout (Vercel Pro)
 export const maxDuration = 120 // 2 minutes max
+
+// Upload base64 image to Supabase Storage and return public URL
+async function uploadImageToStorage(
+  supabase: any,
+  base64Data: string,
+  mimeType: string,
+  userId: string,
+  index: number
+): Promise<string | null> {
+  try {
+    // Decode base64 to buffer
+    const buffer = Buffer.from(base64Data, 'base64')
+    
+    // Determine file extension from mime type
+    const ext = mimeType.includes('png') ? 'png' : 
+                mimeType.includes('webp') ? 'webp' : 'jpg'
+    
+    // Generate unique filename
+    const filename = `studio/${userId}/${Date.now()}-${index}.${ext}`
+    
+    // Upload to Supabase Storage (landing-images bucket)
+    const { data, error } = await supabase.storage
+      .from('landing-images')
+      .upload(filename, buffer, {
+        contentType: mimeType,
+        upsert: true,
+      })
+    
+    if (error) {
+      console.error('[Studio] Storage upload error:', error)
+      return null
+    }
+    
+    // Get public URL
+    const { data: { publicUrl } } = supabase.storage
+      .from('landing-images')
+      .getPublicUrl(filename)
+    
+    console.log(`[Studio] Uploaded image to: ${publicUrl}`)
+    return publicUrl
+  } catch (err) {
+    console.error('[Studio] Upload error:', err)
+    return null
+  }
+}
 
 export async function POST(request: Request) {
   const startTime = Date.now()
@@ -120,19 +165,41 @@ export async function POST(request: Request) {
       }
     }
 
+    console.log(`[Studio] Starting generation with ${selectedProvider}/${modelId}`)
+    console.log(`[Studio] Prompt (first 100 chars): ${prompt.substring(0, 100)}...`)
+    if (productImagesBase64.length > 0) {
+      console.log(`[Studio] Reference images: ${productImagesBase64.length}`)
+    }
+
+    // For Seedream, we need to upload images to get public URLs
+    // KIE.ai API requires public URLs, not base64
+    let productImageUrls: string[] | undefined
+    if (selectedProvider === 'seedream' && productImagesBase64.length > 0) {
+      console.log(`[Studio] Uploading ${productImagesBase64.length} images to storage for Seedream...`)
+      const urls: string[] = []
+      
+      for (let i = 0; i < productImagesBase64.length; i++) {
+        const img = productImagesBase64[i]
+        const url = await uploadImageToStorage(supabase, img.data, img.mimeType, user.id, i)
+        if (url) {
+          urls.push(url)
+        }
+      }
+      
+      if (urls.length > 0) {
+        productImageUrls = urls
+        console.log(`[Studio] Successfully uploaded ${urls.length} images for Seedream`)
+      }
+    }
+
     // Build generation request
     const generateRequest: GenerateImageRequest = {
       provider: selectedProvider,
       modelId: modelId,
       prompt: prompt,
       productImagesBase64: productImagesBase64.length > 0 ? productImagesBase64 : undefined,
+      productImageUrls: productImageUrls, // For Seedream (requires public URLs)
       aspectRatio: aspectRatio as '9:16' | '1:1' | '16:9',
-    }
-
-    console.log(`[Studio] Starting generation with ${selectedProvider}/${modelId}`)
-    console.log(`[Studio] Prompt (first 100 chars): ${prompt.substring(0, 100)}...`)
-    if (productImagesBase64.length > 0) {
-      console.log(`[Studio] Reference images: ${productImagesBase64.length}`)
     }
 
     // Generate image
