@@ -17,6 +17,7 @@ import {
   Settings2,
   Zap,
   Globe,
+  AlertCircle,
 } from 'lucide-react'
 
 type AudioModelId = 'eleven_multilingual_v2' | 'eleven_flash_v2_5' | 'eleven_turbo_v2_5'
@@ -54,40 +55,32 @@ interface VoiceSettings {
 const AUDIO_MODELS: Record<AudioModelId, { name: string; description: string; costLabel: string; latency: string }> = {
   'eleven_multilingual_v2': {
     name: 'Multilingual v2',
-    description: 'Máxima calidad, 32 idiomas, emociones naturales',
-    costLabel: '1 crédito/carácter',
+    description: 'Maxima calidad, 32 idiomas, emociones naturales',
+    costLabel: '1 credito/caracter',
     latency: '~500ms',
   },
   'eleven_flash_v2_5': {
     name: 'Flash v2.5',
-    description: 'Ultra rápido, ideal para tiempo real',
-    costLabel: '0.5 créditos/carácter',
+    description: 'Ultra rapido, ideal para tiempo real',
+    costLabel: '0.5 creditos/caracter',
     latency: '~75ms',
   },
   'eleven_turbo_v2_5': {
     name: 'Turbo v2.5',
     description: 'Balance calidad/velocidad',
-    costLabel: '0.5 créditos/carácter',
+    costLabel: '0.5 creditos/caracter',
     latency: '~200ms',
   },
 }
 
-// Default Spanish LATAM voices
-const DEFAULT_VOICES: Voice[] = [
-  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Bella', gender: 'female', provider: 'elevenlabs', description: 'Voz femenina cálida y natural' },
-  { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni', gender: 'male', provider: 'elevenlabs', description: 'Voz masculina profesional' },
-  { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold', gender: 'male', provider: 'elevenlabs', description: 'Voz masculina fuerte' },
-  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam', gender: 'male', provider: 'elevenlabs', description: 'Voz masculina clara' },
-  { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel', gender: 'female', provider: 'elevenlabs', description: 'Voz femenina versátil' },
-]
-
 export function AudioGenerator() {
-  // Voice selection
-  const [selectedVoice, setSelectedVoice] = useState<Voice>(DEFAULT_VOICES[0])
-  const [voices, setVoices] = useState<Voice[]>(DEFAULT_VOICES)
+  // Voice selection - no default voices, loaded from API
+  const [selectedVoice, setSelectedVoice] = useState<Voice | null>(null)
+  const [voices, setVoices] = useState<Voice[]>([])
   const [isVoiceDropdownOpen, setIsVoiceDropdownOpen] = useState(false)
-  const [isLoadingVoices, setIsLoadingVoices] = useState(false)
+  const [isLoadingVoices, setIsLoadingVoices] = useState(true)
   const [voiceSearch, setVoiceSearch] = useState('')
+  const [voicesError, setVoicesError] = useState<string | null>(null)
 
   // Model selection
   const [selectedModel, setSelectedModel] = useState<AudioModelId>('eleven_multilingual_v2')
@@ -119,22 +112,28 @@ export function AudioGenerator() {
 
   const loadVoices = async () => {
     setIsLoadingVoices(true)
+    setVoicesError(null)
     try {
       const response = await fetch('/api/studio/voices?provider=elevenlabs')
       const data = await response.json()
       if (data.success && data.voices?.length > 0) {
         setVoices(data.voices)
+        setSelectedVoice(data.voices[0])
+      } else if (data.error) {
+        setVoicesError(data.error)
+      } else {
+        setVoicesError('No se encontraron voces en espanol. Configura tu API key de ElevenLabs.')
       }
     } catch (err) {
       console.error('Error loading voices:', err)
-      // Keep default voices
+      setVoicesError('Error al cargar voces. Verifica tu conexion.')
     } finally {
       setIsLoadingVoices(false)
     }
   }
 
   const handleGenerate = async () => {
-    if (!text.trim()) return
+    if (!text.trim() || !selectedVoice) return
 
     setIsGenerating(true)
     setError(null)
@@ -287,103 +286,115 @@ export function AudioGenerator() {
           {/* Voice Selector */}
           <div>
             <label className="block text-sm font-medium text-text-secondary mb-2">
-              Voz
+              Voz Latina
             </label>
             <div className="relative">
-              <button
-                onClick={() => setIsVoiceDropdownOpen(!isVoiceDropdownOpen)}
-                className="w-full flex items-center justify-between px-4 py-3 bg-surface-elevated border border-border rounded-xl hover:border-accent/50 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className={cn(
-                    'w-10 h-10 rounded-full flex items-center justify-center',
-                    selectedVoice.gender === 'female' 
-                      ? 'bg-pink-500/20 border border-pink-500/30'
-                      : 'bg-blue-500/20 border border-blue-500/30'
-                  )}>
-                    <Mic className={cn(
-                      'w-5 h-5',
-                      selectedVoice.gender === 'female' ? 'text-pink-400' : 'text-blue-400'
-                    )} />
-                  </div>
-                  <div className="text-left">
-                    <p className="text-sm font-medium text-text-primary">{selectedVoice.name}</p>
-                    <p className="text-xs text-text-secondary">
-                      {selectedVoice.gender === 'female' ? 'Femenina' : 'Masculina'} · ElevenLabs
-                    </p>
+              {isLoadingVoices ? (
+                <div className="w-full flex items-center justify-center px-4 py-3 bg-surface-elevated border border-border rounded-xl">
+                  <Loader2 className="w-5 h-5 animate-spin text-accent mr-2" />
+                  <span className="text-sm text-text-secondary">Cargando voces latinas...</span>
+                </div>
+              ) : voicesError ? (
+                <div className="w-full px-4 py-3 bg-surface-elevated border border-error/30 rounded-xl">
+                  <div className="flex items-center gap-2 text-error">
+                    <AlertCircle className="w-5 h-5" />
+                    <span className="text-sm">{voicesError}</span>
                   </div>
                 </div>
-                <ChevronDown
-                  className={cn(
-                    'w-5 h-5 text-text-secondary transition-transform',
-                    isVoiceDropdownOpen && 'rotate-180'
-                  )}
-                />
-              </button>
-
-              {isVoiceDropdownOpen && (
-                <div className="absolute top-full left-0 right-0 mt-2 bg-surface-elevated border border-border rounded-xl shadow-xl z-50 max-h-[300px] overflow-hidden flex flex-col">
-                  <div className="p-2 border-b border-border">
-                    <input
-                      type="text"
-                      placeholder="Buscar voz..."
-                      value={voiceSearch}
-                      onChange={(e) => setVoiceSearch(e.target.value)}
-                      className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent/50"
-                    />
-                  </div>
-                  <div className="p-2 overflow-y-auto">
-                    {isLoadingVoices ? (
-                      <div className="flex items-center justify-center py-8">
-                        <Loader2 className="w-5 h-5 animate-spin text-accent" />
+              ) : (
+                <>
+                  <button
+                    onClick={() => setIsVoiceDropdownOpen(!isVoiceDropdownOpen)}
+                    className="w-full flex items-center justify-between px-4 py-3 bg-surface-elevated border border-border rounded-xl hover:border-accent/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        'w-10 h-10 rounded-full flex items-center justify-center',
+                        selectedVoice?.gender === 'female' 
+                          ? 'bg-pink-500/20 border border-pink-500/30'
+                          : 'bg-blue-500/20 border border-blue-500/30'
+                      )}>
+                        <Mic className={cn(
+                          'w-5 h-5',
+                          selectedVoice?.gender === 'female' ? 'text-pink-400' : 'text-blue-400'
+                        )} />
                       </div>
-                    ) : filteredVoices.length === 0 ? (
-                      <p className="text-sm text-text-secondary text-center py-4">
-                        No se encontraron voces
-                      </p>
-                    ) : (
-                      filteredVoices.slice(0, 20).map((voice) => (
-                        <button
-                          key={voice.id}
-                          onClick={() => {
-                            setSelectedVoice(voice)
-                            setIsVoiceDropdownOpen(false)
-                            setVoiceSearch('')
-                          }}
-                          className={cn(
-                            'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors',
-                            selectedVoice.id === voice.id
-                              ? 'bg-accent/10 text-accent'
-                              : 'hover:bg-border/50 text-text-primary'
-                          )}
-                        >
-                          <div className={cn(
-                            'w-8 h-8 rounded-full flex items-center justify-center',
-                            voice.gender === 'female'
-                              ? 'bg-pink-500/20'
-                              : 'bg-blue-500/20'
-                          )}>
-                            <Mic className={cn(
-                              'w-4 h-4',
-                              voice.gender === 'female' ? 'text-pink-400' : 'text-blue-400'
-                            )} />
-                          </div>
-                          <div className="flex-1 text-left">
-                            <p className="text-sm font-medium">{voice.name}</p>
-                            {voice.description && (
-                              <p className="text-xs text-text-secondary line-clamp-1">
-                                {voice.description}
-                              </p>
-                            )}
-                          </div>
-                          {selectedVoice.id === voice.id && (
-                            <Check className="w-4 h-4 text-accent" />
-                          )}
-                        </button>
-                      ))
-                    )}
-                  </div>
-                </div>
+                      <div className="text-left">
+                        <p className="text-sm font-medium text-text-primary">{selectedVoice?.name || 'Selecciona voz'}</p>
+                        <p className="text-xs text-text-secondary">
+                          {selectedVoice?.gender === 'female' ? 'Femenina' : 'Masculina'} · ElevenLabs
+                        </p>
+                      </div>
+                    </div>
+                    <ChevronDown
+                      className={cn(
+                        'w-5 h-5 text-text-secondary transition-transform',
+                        isVoiceDropdownOpen && 'rotate-180'
+                      )}
+                    />
+                  </button>
+
+                  {isVoiceDropdownOpen && (
+                    <div className="absolute top-full left-0 right-0 mt-2 bg-surface-elevated border border-border rounded-xl shadow-xl z-50 max-h-[300px] overflow-hidden flex flex-col">
+                      <div className="p-2 border-b border-border">
+                        <input
+                          type="text"
+                          placeholder="Buscar voz latina..."
+                          value={voiceSearch}
+                          onChange={(e) => setVoiceSearch(e.target.value)}
+                          className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent/50"
+                        />
+                      </div>
+                      <div className="p-2 overflow-y-auto">
+                        {filteredVoices.length === 0 ? (
+                          <p className="text-sm text-text-secondary text-center py-4">
+                            No se encontraron voces
+                          </p>
+                        ) : (
+                          filteredVoices.map((voice) => (
+                            <button
+                              key={voice.id}
+                              onClick={() => {
+                                setSelectedVoice(voice)
+                                setIsVoiceDropdownOpen(false)
+                                setVoiceSearch('')
+                              }}
+                              className={cn(
+                                'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors',
+                                selectedVoice?.id === voice.id
+                                  ? 'bg-accent/10 text-accent'
+                                  : 'hover:bg-border/50 text-text-primary'
+                              )}
+                            >
+                              <div className={cn(
+                                'w-8 h-8 rounded-full flex items-center justify-center',
+                                voice.gender === 'female'
+                                  ? 'bg-pink-500/20'
+                                  : 'bg-blue-500/20'
+                              )}>
+                                <Mic className={cn(
+                                  'w-4 h-4',
+                                  voice.gender === 'female' ? 'text-pink-400' : 'text-blue-400'
+                                )} />
+                              </div>
+                              <div className="flex-1 text-left">
+                                <p className="text-sm font-medium">{voice.name}</p>
+                                {voice.description && (
+                                  <p className="text-xs text-text-secondary line-clamp-1">
+                                    {voice.description}
+                                  </p>
+                                )}
+                              </div>
+                              {selectedVoice?.id === voice.id && (
+                                <Check className="w-4 h-4 text-accent" />
+                              )}
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -391,7 +402,7 @@ export function AudioGenerator() {
           {/* Language Badge */}
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-green-500/10 text-green-400 border border-green-500/20">
-              <Globe className="w-3 h-3" /> Español (LATAM)
+              <Globe className="w-3 h-3" /> Espanol (LATAM)
             </span>
           </div>
 
@@ -423,7 +434,7 @@ export function AudioGenerator() {
             className="flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary transition-colors"
           >
             <Settings2 className="w-4 h-4" />
-            Configuración avanzada
+            Configuracion avanzada
             <ChevronDown className={cn(
               'w-4 h-4 transition-transform',
               showAdvanced && 'rotate-180'
@@ -453,7 +464,7 @@ export function AudioGenerator() {
                   className="w-full accent-accent"
                 />
                 <p className="text-[10px] text-text-muted mt-1">
-                  Mayor = más consistente, Menor = más expresivo
+                  Mayor = mas consistente, Menor = mas expresivo
                 </p>
               </div>
 
@@ -520,10 +531,10 @@ export function AudioGenerator() {
           {/* Generate Button */}
           <button
             onClick={handleGenerate}
-            disabled={isGenerating || !text.trim() || characterCount > maxCharacters}
+            disabled={isGenerating || !text.trim() || !selectedVoice || characterCount > maxCharacters}
             className={cn(
               'w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl font-semibold transition-all duration-200',
-              isGenerating || !text.trim() || characterCount > maxCharacters
+              isGenerating || !text.trim() || !selectedVoice || characterCount > maxCharacters
                 ? 'bg-border text-text-secondary cursor-not-allowed'
                 : 'bg-accent hover:bg-accent-hover text-background shadow-lg shadow-accent/25 hover:shadow-accent/40'
             )}
@@ -544,7 +555,7 @@ export function AudioGenerator() {
           {/* Cost estimate */}
           {text.length > 0 && (
             <p className="text-xs text-center text-text-muted">
-              ~{selectedModel === 'eleven_multilingual_v2' ? text.length : Math.ceil(text.length / 2)} créditos
+              ~{selectedModel === 'eleven_multilingual_v2' ? text.length : Math.ceil(text.length / 2)} creditos
             </p>
           )}
         </div>
@@ -565,7 +576,7 @@ export function AudioGenerator() {
                 <AudioLines className="w-8 h-8 text-text-secondary" />
               </div>
               <p className="text-text-secondary">
-                Tus audios generados aparecerán aquí
+                Tus audios generados apareceran aqui
               </p>
             </div>
           </div>
