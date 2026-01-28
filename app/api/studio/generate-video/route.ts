@@ -3,15 +3,16 @@ import { createClient } from '@/lib/supabase/server'
 import { decrypt } from '@/lib/services/encryption'
 import {
   generateVideo,
-  pollForVideoResult,
   VIDEO_MODELS,
   type VideoModelId,
 } from '@/lib/video-providers'
 
+// Extended timeout for video generation (Vercel Pro required)
+export const maxDuration = 120
+
 /**
  * Upload base64 image to Supabase Storage and get public URL
  * KIE.ai requires public URLs, not base64
- * Uses the existing 'landing-images' bucket (same as image generation)
  */
 async function uploadImageToStorage(
   supabase: any,
@@ -19,19 +20,14 @@ async function uploadImageToStorage(
   userId: string,
   index: number
 ): Promise<string> {
-  // Remove data URL prefix if present
   const base64Clean = base64Data.includes(',') 
     ? base64Data.split(',')[1] 
     : base64Data
 
-  // Convert to buffer
   const buffer = Buffer.from(base64Clean, 'base64')
-
-  // Generate unique filename in studio/video subfolder
   const timestamp = Date.now()
   const filename = `studio/video/${userId}/${timestamp}-${index}.jpg`
 
-  // Upload to Supabase Storage (landing-images bucket - same as image generation)
   const { data, error } = await supabase.storage
     .from('landing-images')
     .upload(filename, buffer, {
@@ -44,7 +40,6 @@ async function uploadImageToStorage(
     throw new Error(`Failed to upload image: ${error.message}`)
   }
 
-  // Get public URL
   const { data: urlData } = supabase.storage
     .from('landing-images')
     .getPublicUrl(filename)
@@ -54,6 +49,8 @@ async function uploadImageToStorage(
 }
 
 export async function POST(request: Request) {
+  const startTime = Date.now()
+  
   try {
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -70,8 +67,8 @@ export async function POST(request: Request) {
       aspectRatio = '16:9',
       resolution,
       enableAudio = true,
-      imageBase64, // Single image (start frame)
-      imageBase64End, // End frame (optional, for transitions)
+      imageBase64,
+      imageBase64End,
     } = body as {
       modelId: VideoModelId
       prompt: string
@@ -90,7 +87,6 @@ export async function POST(request: Request) {
       )
     }
 
-    // Validate model exists
     const modelConfig = VIDEO_MODELS[modelId]
     if (!modelConfig) {
       return NextResponse.json(
@@ -99,15 +95,13 @@ export async function POST(request: Request) {
       )
     }
 
-    // Check if model requires an image but none was provided
     if (modelConfig.requiresImage && !imageBase64) {
       return NextResponse.json({
         success: false,
-        error: `${modelConfig.name} solo soporta image-to-video. Por favor sube una imagen o usa otro modelo como Kling 2.6, Veo 3, Sora 2 o Wan.`,
+        error: `${modelConfig.name} solo soporta image-to-video. Por favor sube una imagen o usa otro modelo.`,
       }, { status: 400 })
     }
 
-    // Get KIE API key from profile
     const { data: profile } = await supabase
       .from('profiles')
       .select('kie_api_key')
@@ -122,11 +116,11 @@ export async function POST(request: Request) {
 
     const kieApiKey = decrypt(profile.kie_api_key)
 
-    console.log(`[Video] Model: ${modelId}`)
+    console.log(`[Video] Starting - Model: ${modelId}, User: ${user.id.substring(0, 8)}...`)
     console.log(`[Video] Prompt: ${prompt.substring(0, 100)}...`)
-    console.log(`[Video] Duration: ${duration}s, Aspect: ${aspectRatio}`)
+    console.log(`[Video] Duration: ${duration}s, Aspect: ${aspectRatio}, Audio: ${enableAudio}`)
 
-    // Upload images to Supabase and get public URLs
+    // Upload images to get public URLs
     const imageUrls: string[] = []
 
     if (imageBase64 && modelConfig.supportsStartEndFrames) {
@@ -134,7 +128,6 @@ export async function POST(request: Request) {
       const url = await uploadImageToStorage(supabase, imageBase64, user.id, 0)
       imageUrls.push(url)
 
-      // End frame (for transitions)
       if (imageBase64End) {
         console.log('[Video] Uploading end image...')
         const urlEnd = await uploadImageToStorage(supabase, imageBase64End, user.id, 1)
@@ -144,8 +137,8 @@ export async function POST(request: Request) {
 
     console.log(`[Video] Image URLs: ${imageUrls.length}`)
 
-    // Generate video
-    let result = await generateVideo(
+    // Create video task (returns taskId for async processing)
+    const result = await generateVideo(
       {
         modelId,
         prompt,
@@ -158,34 +151,33 @@ export async function POST(request: Request) {
       kieApiKey
     )
 
-    // Poll for result
-    if (result.success && result.status === 'processing' && result.taskId) {
-      console.log(`[Video] Task created: ${result.taskId}, polling...`)
-
-      result = await pollForVideoResult(result.taskId, kieApiKey, {
-        maxAttempts: 200,
-        intervalMs: 3000, // 3 seconds
-        timeoutMs: 600000, // 10 minutes
-      })
-    }
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
 
     if (!result.success) {
-      console.error(`[Video] Failed:`, result.error)
+      console.error(`[Video] Task creation failed after ${elapsed}s:`, result.error)
       return NextResponse.json({
         success: false,
-        error: result.error || 'No se pudo generar el video',
+        error: result.error || 'No se pudo iniciar la generación',
       }, { status: 200 })
     }
 
-    console.log(`[Video] Success! URL: ${result.videoUrl}`)
+    // Return taskId immediately - frontend will poll for status
+    console.log(`[Video] Task created in ${elapsed}s: ${result.taskId}`)
 
     return NextResponse.json({
       success: true,
-      videoUrl: result.videoUrl,
+      taskId: result.taskId,
+      status: 'processing',
+      message: 'Video en proceso. Usa /api/studio/video-status para verificar el estado.',
     })
 
   } catch (error: any) {
-    console.error('[Video] Error:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
+    console.error(`[Video] Error after ${elapsed}s:`, error.message)
+    
+    return NextResponse.json({ 
+      success: false,
+      error: error.message || 'Error al generar video'
+    }, { status: 500 })
   }
 }
