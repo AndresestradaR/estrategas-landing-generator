@@ -168,7 +168,8 @@ async function generateVeoVideo(
  * IMAGE FIELD NAMES:
  * - Kling 2.6: image_urls (array)
  * - Sora 2: image_urls (array)
- * - Wan 2.6/2.5: image_urls (array)
+ * - Wan 2.6: image_urls (array)
+ * - Wan 2.5: image_url (singular string) ← DIFFERENT!
  * - Seedance 1.5 Pro: input_urls (array)
  * - Seedance 1.0 Fast: image_url (singular string)
  * - Kling v2.5 Turbo: image_url (singular string)
@@ -209,25 +210,31 @@ async function generateStandardVideo(
     prompt: request.prompt,
   }
 
-  // Model type detection
+  // Model type detection - be SPECIFIC about versions!
   const isKling26 = request.modelId === 'kling-2.6'
   const isKlingV25 = request.modelId === 'kling-v25-turbo'
   const isKling = request.modelId.startsWith('kling')
   const isSora = request.modelId === 'sora-2'
-  const isWan = request.modelId.startsWith('wan')
+  const isWan26 = request.modelId === 'wan-2.6'
+  const isWan25 = request.modelId === 'wan-2.5'
+  const isWan = isWan26 || isWan25
   const isHailuo = request.modelId.startsWith('hailuo')
   const isSeedance15 = request.modelId === 'seedance-1.5-pro'
   const isSeedance10 = request.modelId === 'seedance-1.0-fast'
   const isSeedance = isSeedance15 || isSeedance10
 
-  console.log(`[Video] Model detection: isWan=${isWan}, isKling26=${isKling26}, isSora=${isSora}, isHailuo=${isHailuo}, isSeedance15=${isSeedance15}, isSeedance10=${isSeedance10}`)
+  console.log(`[Video] Model detection: isWan26=${isWan26}, isWan25=${isWan25}, isKling26=${isKling26}, isSora=${isSora}, isHailuo=${isHailuo}, isSeedance15=${isSeedance15}, isSeedance10=${isSeedance10}`)
 
   // Image URLs - DIFFERENT MODELS USE DIFFERENT FIELD NAMES!
   if (request.imageUrls && request.imageUrls.length > 0) {
-    if (isKling26 || isSora || isWan) {
-      // Kling 2.6, Sora 2, and Wan use image_urls (plural array)
+    if (isKling26 || isSora || isWan26) {
+      // Kling 2.6, Sora 2, and Wan 2.6 use image_urls (plural array)
       input.image_urls = request.imageUrls
       console.log(`[Video] Using image_urls (array) for ${request.modelId}`)
+    } else if (isWan25) {
+      // Wan 2.5 uses image_url (singular string)
+      input.image_url = request.imageUrls[0]
+      console.log(`[Video] Using image_url (singular) for ${request.modelId}`)
     } else if (isSeedance15) {
       // Seedance 1.5 Pro uses input_urls (array)
       input.input_urls = request.imageUrls
@@ -302,8 +309,8 @@ async function generateStandardVideo(
   // Note: Wan image-to-video doesn't have audio param
   // Note: Kling v2.5, Hailuo, Sora, and Seedance 1.0 don't support audio
 
-  // Wan specific: multi_shots option
-  if (isWan && modelConfig.supportsMultiShots) {
+  // Wan 2.6 specific: multi_shots option
+  if (isWan26 && modelConfig.supportsMultiShots) {
     input.multi_shots = false // default to single shot
   }
 
