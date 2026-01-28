@@ -11,6 +11,9 @@ import {
   type ImageModelId,
 } from '@/lib/image-providers'
 
+// Mark this route as requiring extended timeout (Vercel Pro)
+export const maxDuration = 120 // 2 minutes max
+
 // Upload base64 image to Supabase Storage and return public URL
 async function uploadImageToStorage(
   supabase: any,
@@ -57,6 +60,8 @@ async function uploadImageToStorage(
 }
 
 export async function POST(request: Request) {
+  const startTime = Date.now()
+  
   try {
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -95,6 +100,8 @@ export async function POST(request: Request) {
         { status: 400 }
       )
     }
+
+    console.log(`[Studio] Request received - Model: ${modelId}, User: ${user.id.substring(0, 8)}...`)
 
     // Get API keys from profile
     const { data: profile } = await supabase
@@ -158,9 +165,11 @@ export async function POST(request: Request) {
       }
     }
 
-    // Log reference images info for debugging
-    console.log(`[Studio] Reference images received: ${productImagesBase64.length}`)
-    console.log(`[Studio] Provider: ${selectedProvider}`)
+    console.log(`[Studio] Starting generation with ${selectedProvider}/${modelId}`)
+    console.log(`[Studio] Prompt (first 100 chars): ${prompt.substring(0, 100)}...`)
+    if (productImagesBase64.length > 0) {
+      console.log(`[Studio] Reference images: ${productImagesBase64.length}`)
+    }
 
     // For Seedream, we need to upload images to get public URLs
     // KIE.ai API requires public URLs, not base64
@@ -193,28 +202,29 @@ export async function POST(request: Request) {
       aspectRatio: aspectRatio as '9:16' | '1:1' | '16:9',
     }
 
-    console.log(`[Studio] Generating image with ${selectedProvider}, model: ${modelId}`)
-    console.log(`[Studio] Prompt: ${prompt.substring(0, 100)}...`)
-    console.log(`[Studio] Has base64 images: ${!!generateRequest.productImagesBase64}`)
-    console.log(`[Studio] Has image URLs: ${!!generateRequest.productImageUrls}`)
-
     // Generate image
     let result = await generateImage(generateRequest, apiKeys)
 
-    // For async providers, poll for result
+    // For async providers (KIE, BFL), poll for result
+    // Use shorter timeout to stay within Vercel limits
     if (result.success && result.status === 'processing' && result.taskId) {
-      console.log(`[Studio] Task created: ${result.taskId}, polling for result...`)
+      console.log(`[Studio] Async task created: ${result.taskId}, polling...`)
 
       const apiKey = apiKeys[requiredKey]!
+      const elapsedMs = Date.now() - startTime
+      const remainingMs = Math.max(100000 - elapsedMs, 30000) // At least 30s, max until 100s total
+
       result = await pollForResult(selectedProvider, result.taskId, apiKey, {
-        maxAttempts: 120,
+        maxAttempts: Math.floor(remainingMs / 1000), // 1 attempt per second
         intervalMs: 1000,
-        timeoutMs: 120000,
+        timeoutMs: remainingMs,
       })
     }
 
+    const totalTime = ((Date.now() - startTime) / 1000).toFixed(1)
+
     if (!result.success || !result.imageBase64) {
-      console.error(`[Studio] Generation failed:`, result.error)
+      console.error(`[Studio] Generation failed after ${totalTime}s:`, result.error)
       return NextResponse.json({
         success: false,
         error: result.error || 'No se pudo generar la imagen',
@@ -222,7 +232,7 @@ export async function POST(request: Request) {
       }, { status: 200 })
     }
 
-    console.log(`[Studio] Image generated successfully with ${selectedProvider}`)
+    console.log(`[Studio] ✓ Image generated successfully in ${totalTime}s with ${selectedProvider}`)
 
     return NextResponse.json({
       success: true,
@@ -232,7 +242,22 @@ export async function POST(request: Request) {
     })
 
   } catch (error: any) {
-    console.error('[Studio] Generate error:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    const totalTime = ((Date.now() - startTime) / 1000).toFixed(1)
+    console.error(`[Studio] Error after ${totalTime}s:`, error.message)
+    
+    // Return user-friendly error messages
+    let userMessage = 'Error interno del servidor'
+    if (error.message?.includes('timeout') || error.message?.includes('tardó demasiado')) {
+      userMessage = 'La generación tardó demasiado. Intenta de nuevo.'
+    } else if (error.message?.includes('API key')) {
+      userMessage = error.message
+    } else if (error.message?.includes('SAFETY') || error.message?.includes('bloqueado')) {
+      userMessage = 'Contenido bloqueado por filtros de seguridad. Modifica el prompt.'
+    }
+    
+    return NextResponse.json({ 
+      success: false,
+      error: userMessage 
+    }, { status: 500 })
   }
 }
