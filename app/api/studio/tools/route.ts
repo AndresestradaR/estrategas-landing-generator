@@ -32,8 +32,9 @@ async function generateWithGemini(
     return { success: false, error: 'Herramienta no soportada para Gemini' }
   }
 
-  // Use gemini-2.0-flash-exp for image editing (supports image input/output)
-  const apiModelId = 'gemini-2.0-flash-exp'
+  // Use gemini-2.0-flash-preview-image-generation for image editing
+  // This is the official model for image generation with Gemini
+  const apiModelId = 'gemini-2.0-flash-preview-image-generation'
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${apiModelId}:generateContent`
 
   const parts = [
@@ -70,8 +71,20 @@ async function generateWithGemini(
       if (response.status === 429) {
         return { success: false, error: 'Limite de API excedido. Espera un momento e intenta de nuevo.' }
       }
-      if (response.status === 400 && errorText.includes('SAFETY')) {
-        return { success: false, error: 'Imagen bloqueada por filtros de seguridad.' }
+      if (response.status === 400) {
+        // Parse specific 400 errors
+        if (errorText.includes('SAFETY')) {
+          return { success: false, error: 'Imagen bloqueada por filtros de seguridad.' }
+        }
+        if (errorText.includes('not found') || errorText.includes('does not exist')) {
+          return { success: false, error: 'Modelo de IA no disponible. Contacta soporte.' }
+        }
+        if (errorText.includes('invalid')) {
+          return { success: false, error: 'Formato de imagen no soportado. Usa PNG o JPG.' }
+        }
+        // Log full error for debugging
+        console.error('[Tools/Gemini] Full 400 error:', errorText)
+        return { success: false, error: 'Error en la solicitud. Intenta con otra imagen.' }
       }
       if (response.status === 403) {
         return { success: false, error: 'API key invalida o sin permisos para generacion de imagenes.' }
