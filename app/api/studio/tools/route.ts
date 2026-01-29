@@ -58,34 +58,69 @@ async function generateLipSync(
   apiKey: string
 ): Promise<{ success: boolean; taskId?: string; error?: string }> {
   console.log('[Tools/LipSync] Starting lip sync generation')
+  console.log('[Tools/LipSync] Image URL:', imageUrl)
+  console.log('[Tools/LipSync] Audio URL:', audioUrl)
 
   try {
+    // Verify URLs are accessible
+    console.log('[Tools/LipSync] Verifying image URL is accessible...')
+    const imageCheck = await fetch(imageUrl, { method: 'HEAD' })
+    if (!imageCheck.ok) {
+      console.error('[Tools/LipSync] Image URL not accessible:', imageCheck.status)
+      return { success: false, error: `Imagen no accesible: ${imageCheck.status}` }
+    }
+
+    console.log('[Tools/LipSync] Verifying audio URL is accessible...')
+    const audioCheck = await fetch(audioUrl, { method: 'HEAD' })
+    if (!audioCheck.ok) {
+      console.error('[Tools/LipSync] Audio URL not accessible:', audioCheck.status)
+      return { success: false, error: `Audio no accesible: ${audioCheck.status}` }
+    }
+
+    const requestBody = {
+      model: 'hailuo/lip-sync',
+      input: {
+        image_url: imageUrl,
+        audio_url: audioUrl,
+      },
+    }
+
+    console.log('[Tools/LipSync] Sending to KIE API:', JSON.stringify(requestBody))
+
     const response = await fetch(`${KIE_API_BASE}/jobs/createTask`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({
-        model: 'hailuo/lip-sync',
-        input: {
-          image_url: imageUrl,
-          audio_url: audioUrl,
-        },
-      }),
+      body: JSON.stringify(requestBody),
     })
 
-    const data = await response.json()
+    const responseText = await response.text()
+    console.log('[Tools/LipSync] KIE Response status:', response.status)
+    console.log('[Tools/LipSync] KIE Response body:', responseText)
+
+    let data: any
+    try {
+      data = JSON.parse(responseText)
+    } catch (e) {
+      console.error('[Tools/LipSync] Failed to parse JSON:', responseText)
+      return { success: false, error: 'Respuesta invalida de KIE API' }
+    }
 
     if (data.code !== 200 && data.code !== 0) {
-      return { success: false, error: data.msg || data.message || 'Error en KIE API' }
+      const errorMsg = data.msg || data.message || `Error KIE: code ${data.code}`
+      console.error('[Tools/LipSync] KIE API error:', errorMsg)
+      return { success: false, error: errorMsg }
     }
 
     const taskId = data.data?.taskId || data.taskId
     if (!taskId) {
+      console.error('[Tools/LipSync] No taskId in response:', data)
       return { success: false, error: 'No se recibio ID de tarea' }
     }
 
+    console.log('[Tools/LipSync] Task created successfully:', taskId)
     return { success: true, taskId }
   } catch (error: any) {
     console.error('[Tools/LipSync] Error:', error.message)
@@ -161,19 +196,32 @@ async function uploadToSupabase(
   const bucket = 'generations'
   const path = `${userId}/tools/${Date.now()}-${filename}`
 
-  const fileBuffer = Buffer.from(await file.arrayBuffer())
+  console.log(`[Upload] Starting upload: ${filename} (${contentType}, ${file.size} bytes)`)
 
-  const { error } = await supabase.storage
-    .from(bucket)
-    .upload(path, fileBuffer, { contentType, upsert: true })
+  try {
+    const fileBuffer = Buffer.from(await file.arrayBuffer())
+    console.log(`[Upload] File buffer created, size: ${fileBuffer.length}`)
 
-  if (error) {
-    console.error('[Upload] Error:', error)
+    const { error, data } = await supabase.storage
+      .from(bucket)
+      .upload(path, fileBuffer, { contentType, upsert: true })
+
+    if (error) {
+      console.error('[Upload] Supabase upload error:', error.message, error)
+      return null
+    }
+
+    console.log('[Upload] Upload successful, path:', path)
+
+    const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path)
+    const publicUrl = urlData?.publicUrl || null
+
+    console.log('[Upload] Public URL:', publicUrl)
+    return publicUrl
+  } catch (error: any) {
+    console.error('[Upload] Unexpected error:', error.message)
     return null
   }
-
-  const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path)
-  return urlData?.publicUrl || null
 }
 
 export async function POST(request: Request) {
@@ -350,7 +398,10 @@ export async function POST(request: Request) {
       // KIE Hailuo - Lip Sync
       // ========================================
       case 'lip-sync': {
+        console.log('[Tools/LipSync] Processing lip-sync request')
+
         if (!profile.kie_api_key) {
+          console.error('[Tools/LipSync] No KIE API key configured')
           return NextResponse.json(
             { error: 'Necesitas configurar tu API key de KIE.ai' },
             { status: 400 }
@@ -358,7 +409,9 @@ export async function POST(request: Request) {
         }
 
         const apiKey = decrypt(profile.kie_api_key)
+        console.log('[Tools/LipSync] API key decrypted successfully')
 
+        console.log('[Tools/LipSync] Uploading image...')
         const imageUrl = await uploadToSupabase(
           supabase,
           user.id,
@@ -367,6 +420,15 @@ export async function POST(request: Request) {
           image!.type || 'image/png'
         )
 
+        if (!imageUrl) {
+          console.error('[Tools/LipSync] Image upload failed')
+          return NextResponse.json(
+            { error: 'Error al subir imagen. Verifica permisos del bucket.' },
+            { status: 500 }
+          )
+        }
+
+        console.log('[Tools/LipSync] Uploading audio...')
         const audioUrl = await uploadToSupabase(
           supabase,
           user.id,
@@ -375,13 +437,19 @@ export async function POST(request: Request) {
           audio!.type || 'audio/mpeg'
         )
 
-        if (!imageUrl || !audioUrl) {
-          return NextResponse.json({ error: 'Error al subir archivos' }, { status: 500 })
+        if (!audioUrl) {
+          console.error('[Tools/LipSync] Audio upload failed')
+          return NextResponse.json(
+            { error: 'Error al subir audio. Verifica permisos del bucket.' },
+            { status: 500 }
+          )
         }
 
+        console.log('[Tools/LipSync] Both files uploaded, calling KIE API...')
         const result = await generateLipSync(imageUrl, audioUrl, apiKey)
 
         if (result.success && result.taskId) {
+          console.log('[Tools/LipSync] Task created:', result.taskId)
           return NextResponse.json({
             success: true,
             taskId: result.taskId,
@@ -389,6 +457,7 @@ export async function POST(request: Request) {
           })
         }
 
+        console.error('[Tools/LipSync] Failed to create task:', result.error)
         return NextResponse.json(
           { error: result.error || 'Error al iniciar lip sync' },
           { status: 500 }
