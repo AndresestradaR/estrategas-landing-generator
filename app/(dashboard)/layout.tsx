@@ -30,7 +30,7 @@ const creatorNavigation = [
   { name: 'Crea tu Banner', href: '/dashboard/banner', icon: ImageIcon, soon: true },
   { name: 'Crea tu Landing', href: '/dashboard/landing', icon: LayoutTemplate },
   { name: 'Estudio IA', href: '/dashboard/studio', icon: Wand2 },
-  { name: 'Encuentra tu Producto Ganador', href: '/dashboard/product-research', icon: Target, soon: true },
+  { name: 'Encuentra tu Producto Ganador', href: '/dashboard/product-research', icon: Target },
 ]
 
 const otherNavigation = [
