@@ -1,49 +1,126 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ProductFilters, SearchResponse } from '@/lib/dropkiller/types'
-import { scrapeProducts } from '@/lib/product-scraper/scraper'
+import { ProductFilters, Product, SearchResponse } from '@/lib/dropkiller/types'
 
-export const maxDuration = 60 // Allow up to 60 seconds for scraping
+export const maxDuration = 30
+
+const BASE_URL = 'https://www.dropkiller.com'
+
+// Build URL with filters
+function buildUrl(filters: ProductFilters): string {
+  const params = new URLSearchParams()
+
+  if (filters.country) params.set('country', filters.country)
+  if (filters.platform) params.set('platform', filters.platform)
+  if (filters.minSales7d) params.set('s7min', filters.minSales7d.toString())
+  if (filters.maxSales7d) params.set('s7max', filters.maxSales7d.toString())
+  if (filters.minSales30d) params.set('s30min', filters.minSales30d.toString())
+  if (filters.maxSales30d) params.set('s30max', filters.maxSales30d.toString())
+  if (filters.minStock) params.set('stock-min', filters.minStock.toString())
+  if (filters.maxStock) params.set('stock-max', filters.maxStock.toString())
+  if (filters.minPrice) params.set('price-min', filters.minPrice.toString())
+  if (filters.maxPrice) params.set('price-max', filters.maxPrice.toString())
+
+  params.set('limit', (filters.limit || 50).toString())
+
+  return `${BASE_URL}/dashboard/products?${params.toString()}`
+}
+
+// Parse products from HTML
+function parseProducts(html: string): Product[] {
+  const products: Product[] = []
+
+  // Try to find Next.js data
+  const nextDataMatch = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/)
+  if (nextDataMatch) {
+    try {
+      const nextData = JSON.parse(nextDataMatch[1])
+      const pageProps = nextData?.props?.pageProps
+
+      // Look for products in different possible locations
+      const productList = pageProps?.products ||
+                         pageProps?.initialProducts ||
+                         pageProps?.data?.products ||
+                         []
+
+      if (Array.isArray(productList) && productList.length > 0) {
+        return productList.map((p: any, i: number) => ({
+          id: p.id || p._id || `product-${i}`,
+          externalId: p.externalId || p.external_id || '',
+          name: p.name || p.title || p.productName || 'Sin nombre',
+          image: p.image || p.thumbnail || p.imageUrl || p.img || '',
+          price: parseFloat(p.price || p.productPrice || 0),
+          stock: parseInt(p.stock || p.inventory || 0),
+          sales7d: parseInt(p.sales7d || p.sales_7d || p.weekSales || 0),
+          sales30d: parseInt(p.sales30d || p.sales_30d || p.monthSales || 0),
+          revenue7d: parseFloat(p.revenue7d || p.revenue_7d || 0),
+          revenue30d: parseFloat(p.revenue30d || p.revenue_30d || 0),
+          platform: p.platform || p.source || '',
+          country: p.country || '',
+          url: p.url || p.productUrl || p.link || '',
+        }))
+      }
+    } catch (e) {
+      console.error('[Parse] Error parsing __NEXT_DATA__:', e)
+    }
+  }
+
+  return products
+}
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const { filters } = body as { filters: ProductFilters }
 
-    // Check credentials are configured
-    if (!process.env.PRODUCT_RESEARCH_EMAIL || !process.env.PRODUCT_RESEARCH_PASSWORD) {
-      console.error('[ProductSearch] Missing PRODUCT_RESEARCH credentials')
+    const cookies = process.env.PRODUCT_RESEARCH_COOKIES
+    if (!cookies) {
       return NextResponse.json(
         { error: 'Servicio no configurado. Contacta al administrador.' },
         { status: 500 }
       )
     }
 
-    console.log('[ProductSearch] Starting search with filters:', JSON.stringify(filters))
+    const url = buildUrl(filters)
+    console.log('[ProductSearch] Fetching:', url)
 
-    // Use Puppeteer scraper
-    const result = await scrapeProducts({
-      ...filters,
-      limit: filters.limit || 50,
-      page: filters.page || 1,
+    const response = await fetch(url, {
+      headers: {
+        'Cookie': cookies,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'es-ES,es;q=0.9',
+      },
     })
 
-    if (!result.success) {
-      console.error('[ProductSearch] Scrape failed:', result.error)
+    if (!response.ok) {
+      console.error('[ProductSearch] Fetch failed:', response.status)
       return NextResponse.json(
-        { error: result.error || 'Error al buscar productos' },
+        { error: 'Error al conectar. Las cookies pueden haber expirado.' },
         { status: 500 }
       )
     }
 
-    const response: SearchResponse = {
-      products: result.products || [],
-      total: result.products?.length || 0,
-      page: filters.page || 1,
-      hasMore: (result.products?.length || 0) === (filters.limit || 50),
+    const html = await response.text()
+
+    // Check if redirected to login
+    if (html.includes('sign-in') || html.includes('/login')) {
+      return NextResponse.json(
+        { error: 'Sesión expirada. Actualiza las cookies.' },
+        { status: 401 }
+      )
     }
 
-    console.log(`[ProductSearch] Returning ${response.total} products`)
-    return NextResponse.json(response)
+    const products = parseProducts(html)
+
+    const result: SearchResponse = {
+      products,
+      total: products.length,
+      page: filters.page || 1,
+      hasMore: products.length === (filters.limit || 50),
+    }
+
+    console.log(`[ProductSearch] Found ${products.length} products`)
+    return NextResponse.json(result)
 
   } catch (error) {
     console.error('[ProductSearch] Error:', error)
