@@ -32,9 +32,9 @@ async function generateWithGemini(
     return { success: false, error: 'Herramienta no soportada para Gemini' }
   }
 
-  // Use gemini-2.5-flash-image - the official production model for image generation
+  // Use gemini-2.5-flash-image - same model used in ImageGenerator that works
   // Docs: https://ai.google.dev/gemini-api/docs/image-generation
-  const apiModelId = 'gemini-2.5-flash-preview-04-17'
+  const apiModelId = 'gemini-2.5-flash-image'
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${apiModelId}:generateContent`
 
   const parts = [
@@ -56,7 +56,10 @@ async function generateWithGemini(
       body: JSON.stringify({
         contents: [{ parts }],
         generationConfig: {
-          responseModalities: ['TEXT', 'IMAGE'],
+          responseModalities: ['IMAGE'],
+          imageConfig: {
+            aspectRatio: '1:1',
+          },
         },
       }),
     })
