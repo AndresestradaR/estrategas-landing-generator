@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { cn } from '@/lib/utils/cn'
 import {
-  Layers,
+  ImagePlus,
   Maximize2,
   Eraser,
   RotateCcw,
@@ -18,6 +18,8 @@ import {
   Download,
   Play,
   Pause,
+  Type,
+  Expand,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -29,16 +31,42 @@ interface Tool {
   color: string
   soon?: boolean
   requiresAudio?: boolean
+  requiresText?: boolean
+  textPlaceholder?: string
+  textLabel?: string
   outputsVideo?: boolean
 }
 
 const TOOLS: Tool[] = [
   {
-    id: 'variations',
-    name: 'Variaciones',
-    description: 'Genera variantes de una imagen',
-    icon: Layers,
+    id: 'change-bg',
+    name: 'Cambiar Fondo',
+    description: 'Cambia el fondo de tu imagen',
+    icon: ImagePlus,
     color: 'from-blue-500 to-cyan-500',
+    requiresText: true,
+    textLabel: 'Describe el nuevo fondo',
+    textPlaceholder: 'Ej: playa tropical al atardecer, estudio blanco minimalista, bosque nevado...',
+  },
+  {
+    id: 'add-text',
+    name: 'Agregar Texto',
+    description: 'Agrega texto a tu imagen',
+    icon: Type,
+    color: 'from-amber-500 to-orange-500',
+    requiresText: true,
+    textLabel: 'Texto e instrucciones',
+    textPlaceholder: 'Ej: Agrega "OFERTA 50%" en grande arriba, color rojo con sombra...',
+  },
+  {
+    id: 'expand',
+    name: 'Expandir Imagen',
+    description: 'Extiende los bordes de tu imagen',
+    icon: Expand,
+    color: 'from-teal-500 to-emerald-500',
+    requiresText: true,
+    textLabel: 'Direccion a expandir',
+    textPlaceholder: 'Ej: expandir hacia arriba y los lados, mantener el estilo...',
   },
   {
     id: 'upscale',
@@ -85,6 +113,7 @@ export function ToolsGrid() {
   const [activeTool, setActiveTool] = useState<ActiveTool>(null)
   const [uploadedImage, setUploadedImage] = useState<File | null>(null)
   const [uploadedAudio, setUploadedAudio] = useState<File | null>(null)
+  const [textInput, setTextInput] = useState<string>('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [resultImage, setResultImage] = useState<string | null>(null)
   const [resultVideo, setResultVideo] = useState<string | null>(null)
@@ -135,7 +164,7 @@ export function ToolsGrid() {
 
   const pollForLipSyncResult = async (taskId: string) => {
     let attempts = 0
-    const maxAttempts = 200 // ~10 minutes with 3s interval
+    const maxAttempts = 200
 
     pollingRef.current = setInterval(async () => {
       attempts++
@@ -167,7 +196,6 @@ export function ToolsGrid() {
           setProcessingStatus('')
           toast.error(data.error)
         } else {
-          // Still processing
           setProcessingStatus(`Generando video... (${Math.round((attempts / maxAttempts) * 100)}%)`)
         }
       } catch (error) {
@@ -185,6 +213,12 @@ export function ToolsGrid() {
       return
     }
 
+    // Text tools require text input
+    if (currentTool?.requiresText && !textInput.trim()) {
+      toast.error('Necesitas ingresar las instrucciones')
+      return
+    }
+
     setIsProcessing(true)
     setProcessingStatus(currentTool?.outputsVideo ? 'Iniciando...' : '')
 
@@ -195,6 +229,10 @@ export function ToolsGrid() {
 
       if (uploadedAudio && currentTool?.requiresAudio) {
         formData.append('audio', uploadedAudio)
+      }
+
+      if (textInput && currentTool?.requiresText) {
+        formData.append('textInput', textInput)
       }
 
       const response = await fetch('/api/studio/tools', {
@@ -208,14 +246,12 @@ export function ToolsGrid() {
         throw new Error(data.error || 'Error procesando')
       }
 
-      // For lip sync, we get a taskId and need to poll
       if (data.taskId && currentTool?.outputsVideo) {
         setProcessingStatus('Procesando video...')
         pollForLipSyncResult(data.taskId)
         return
       }
 
-      // For image tools, we get the result immediately
       if (data.success && data.imageBase64) {
         setResultImage(`data:${data.mimeType || 'image/png'};base64,${data.imageBase64}`)
         toast.success('Imagen procesada exitosamente')
@@ -247,6 +283,7 @@ export function ToolsGrid() {
   const resetTool = () => {
     setUploadedImage(null)
     setUploadedAudio(null)
+    setTextInput('')
     setResultImage(null)
     setResultVideo(null)
     setProcessingStatus('')
@@ -260,6 +297,7 @@ export function ToolsGrid() {
   // Tool interface view
   if (activeTool && currentTool) {
     const isLipSync = currentTool.requiresAudio
+    const needsText = currentTool.requiresText
 
     return (
       <div className="h-[calc(100vh-200px)] min-h-[600px]">
@@ -296,7 +334,7 @@ export function ToolsGrid() {
           {/* Content */}
           <div className="flex-1 p-6 flex gap-6 overflow-hidden">
             {/* Upload / Input Section */}
-            <div className={cn('flex flex-col', isLipSync ? 'w-1/3' : 'flex-1')}>
+            <div className={cn('flex flex-col', (isLipSync || needsText) ? 'w-1/3' : 'flex-1')}>
               {/* Image Upload */}
               <label className="block text-sm font-medium text-text-secondary mb-3">
                 {isLipSync ? 'Imagen (cara/persona)' : 'Imagen original'}
@@ -304,7 +342,7 @@ export function ToolsGrid() {
               {uploadedImage ? (
                 <div className={cn(
                   'relative bg-surface-elevated rounded-xl overflow-hidden',
-                  isLipSync ? 'h-48' : 'flex-1'
+                  (isLipSync || needsText) ? 'h-48' : 'flex-1'
                 )}>
                   <img
                     src={URL.createObjectURL(uploadedImage)}
@@ -325,7 +363,7 @@ export function ToolsGrid() {
               ) : (
                 <label className={cn(
                   'flex flex-col items-center justify-center border-2 border-dashed border-border hover:border-accent/50 rounded-xl cursor-pointer transition-colors',
-                  isLipSync ? 'h-48' : 'flex-1'
+                  (isLipSync || needsText) ? 'h-48' : 'flex-1'
                 )}>
                   <input
                     type="file"
@@ -341,6 +379,21 @@ export function ToolsGrid() {
                     PNG, JPG hasta 10MB
                   </p>
                 </label>
+              )}
+
+              {/* Text Input (for text-based tools) */}
+              {needsText && (
+                <>
+                  <label className="block text-sm font-medium text-text-secondary mb-3 mt-6">
+                    {currentTool.textLabel}
+                  </label>
+                  <textarea
+                    value={textInput}
+                    onChange={(e) => setTextInput(e.target.value)}
+                    placeholder={currentTool.textPlaceholder}
+                    className="flex-1 min-h-[120px] bg-surface-elevated border border-border rounded-xl p-4 text-text-primary placeholder:text-text-secondary/50 resize-none focus:outline-none focus:ring-2 focus:ring-accent/50"
+                  />
+                </>
               )}
 
               {/* Audio Upload (for Lip Sync) */}
@@ -410,7 +463,7 @@ export function ToolsGrid() {
             </div>
 
             {/* Result Section */}
-            <div className={cn('flex flex-col', isLipSync ? 'flex-1' : 'flex-1')}>
+            <div className="flex-1 flex flex-col">
               <label className="block text-sm font-medium text-text-secondary mb-3">
                 Resultado
               </label>
@@ -475,10 +528,10 @@ export function ToolsGrid() {
               )}
               <button
                 onClick={handleProcess}
-                disabled={!uploadedImage || isProcessing || (isLipSync && !uploadedAudio)}
+                disabled={!uploadedImage || isProcessing || (isLipSync && !uploadedAudio) || (needsText && !textInput.trim())}
                 className={cn(
                   'flex items-center gap-2 px-6 py-2.5 rounded-xl font-semibold transition-all',
-                  !uploadedImage || isProcessing || (isLipSync && !uploadedAudio)
+                  !uploadedImage || isProcessing || (isLipSync && !uploadedAudio) || (needsText && !textInput.trim())
                     ? 'bg-border text-text-secondary cursor-not-allowed'
                     : 'bg-accent hover:bg-accent-hover text-background'
                 )}
@@ -512,7 +565,7 @@ export function ToolsGrid() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         {TOOLS.map((tool) => (
           <button
             key={tool.id}

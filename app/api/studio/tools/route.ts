@@ -4,19 +4,49 @@ import { decrypt } from '@/lib/services/encryption'
 import { generateImage, pollForResult } from '@/lib/image-providers'
 import type { GenerateImageRequest } from '@/lib/image-providers/types'
 
-type ToolType = 'variations' | 'upscale' | 'remove-bg' | 'camera-angle' | 'mockup' | 'lip-sync'
+type ToolType = 'change-bg' | 'add-text' | 'expand' | 'upscale' | 'remove-bg' | 'camera-angle' | 'mockup' | 'lip-sync'
 
 const KIE_API_BASE = 'https://api.kie.ai/api/v1'
 
-// Tool-specific prompts
-const TOOL_PROMPTS: Record<string, string> = {
-  variations: `Create a variation of this image. Keep the same subject, style, and quality but vary the composition, lighting, or perspective slightly to create an interesting alternative version. Maintain the same level of detail and professionalism.`,
+// Build prompt based on tool type and user input
+function buildPrompt(tool: ToolType, textInput?: string): string {
+  switch (tool) {
+    case 'change-bg':
+      return `Keep the main subject of this image exactly as it is, but replace the background with: ${textInput || 'a clean white studio background'}.
+Maintain perfect edges around the subject. The subject should look naturally placed in the new environment.
+Do not modify the subject at all - only change the background.`
 
-  upscale: `Enhance this image to higher resolution and quality. Improve sharpness, details, and clarity while maintaining the original composition, colors, and style exactly. Make it look more professional and crisp.`,
+    case 'add-text':
+      return `Edit this image to add text as described: ${textInput || 'Add promotional text'}.
+The text should be visually appealing, well-positioned, and easy to read.
+Use appropriate font styles, colors, and effects that complement the image.
+Keep the original image content intact.`
 
-  'camera-angle': `Reimagine this exact scene from a completely different camera angle. Create a new perspective as if the camera was positioned from above, below, from the side, or at a dramatic angle. Keep the same subject, lighting style, and quality but change the viewpoint dramatically.`,
+    case 'expand':
+      return `Expand this image by extending its borders: ${textInput || 'expand in all directions'}.
+Generate new content that seamlessly continues the existing image.
+Match the style, lighting, colors, and perspective of the original image perfectly.
+The expanded areas should look natural and cohesive with the original content.`
 
-  mockup: `Transform this product into a professional e-commerce mockup. Place the product in a clean, minimalist studio setting with professional soft lighting. Use a neutral background (white or light gray) with subtle shadows. Make it look like a high-end product photography shot ready for an online store.`,
+    case 'upscale':
+      return `Enhance this image to higher resolution and quality.
+Improve sharpness, details, and clarity while maintaining the original composition, colors, and style exactly.
+Make it look more professional and crisp. Do not add or remove any elements.`
+
+    case 'camera-angle':
+      return `Reimagine this exact scene from a completely different camera angle.
+Create a new perspective as if the camera was positioned from above, below, from the side, or at a dramatic angle.
+Keep the same subject, lighting style, and quality but change the viewpoint dramatically.`
+
+    case 'mockup':
+      return `Transform this product into a professional e-commerce mockup.
+Place the product in a clean, minimalist studio setting with professional soft lighting.
+Use a neutral background (white or light gray) with subtle shadows.
+Make it look like a high-end product photography shot ready for an online store.`
+
+    default:
+      return ''
+  }
 }
 
 /**
@@ -159,6 +189,7 @@ export async function POST(request: Request) {
     const image = formData.get('image') as File | null
     const tool = formData.get('tool') as ToolType
     const audio = formData.get('audio') as File | null
+    const textInput = formData.get('textInput') as string | null
 
     if (!tool) {
       return NextResponse.json({ error: 'Herramienta es requerida' }, { status: 400 })
@@ -192,9 +223,11 @@ export async function POST(request: Request) {
 
     switch (tool) {
       // ========================================
-      // GEMINI tools - Use existing provider that works
+      // GEMINI tools - Use existing provider
       // ========================================
-      case 'variations':
+      case 'change-bg':
+      case 'add-text':
+      case 'expand':
       case 'upscale':
       case 'camera-angle':
       case 'mockup': {
@@ -206,12 +239,11 @@ export async function POST(request: Request) {
         }
 
         const apiKey = decrypt(profile.google_api_key)
-        const prompt = TOOL_PROMPTS[tool]
+        const prompt = buildPrompt(tool, textInput || undefined)
 
-        // Use the existing image provider system
         const imageRequest: GenerateImageRequest = {
           provider: 'gemini',
-          modelId: 'gemini-2.5-flash', // Use the model that works
+          modelId: 'gemini-2.5-flash',
           prompt: prompt,
           productImagesBase64: [{ data: imageBase64, mimeType }],
           aspectRatio: '1:1',
@@ -229,7 +261,6 @@ export async function POST(request: Request) {
           })
         }
 
-        // If result has taskId (async), poll for it
         if (result.taskId) {
           const pollResult = await pollForResult('gemini', result.taskId, apiKey, {
             maxAttempts: 60,
@@ -269,7 +300,6 @@ export async function POST(request: Request) {
 
         const apiKey = decrypt(profile.bfl_api_key)
 
-        // Use flux provider for background removal
         const imageRequest: GenerateImageRequest = {
           provider: 'flux',
           modelId: 'flux-2-pro',
@@ -282,7 +312,6 @@ export async function POST(request: Request) {
 
         const result = await generateImage(imageRequest, { bfl: apiKey })
 
-        // Flux requires polling
         if (result.taskId) {
           const pollResult = await pollForResult('flux', result.taskId, apiKey, {
             maxAttempts: 60,
@@ -330,7 +359,6 @@ export async function POST(request: Request) {
 
         const apiKey = decrypt(profile.kie_api_key)
 
-        // Upload image and audio to get public URLs
         const imageUrl = await uploadToSupabase(
           supabase,
           user.id,
