@@ -2,17 +2,19 @@ import { NextRequest, NextResponse } from 'next/server'
 import { ProductFilters, Product, SearchResponse } from '@/lib/dropkiller/types'
 import { buildDropKillerUrl } from '@/lib/dropkiller/url-builder'
 
-// Esta es una versión simplificada que hace fetch directo
-// Para producción se necesitaría Puppeteer/Playwright en un serverless function separado
+// Cookies de la cuenta premium - se configura en Vercel env vars
+const PRODUCT_RESEARCH_COOKIES = process.env.PRODUCT_RESEARCH_COOKIES || ''
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { filters, cookies } = body as { filters: ProductFilters; cookies: string }
-    
-    if (!cookies) {
+    const { filters } = body as { filters: ProductFilters }
+
+    if (!PRODUCT_RESEARCH_COOKIES) {
+      console.error('[ProductSearch] PRODUCT_RESEARCH_COOKIES env var not configured')
       return NextResponse.json(
-        { error: 'Se requieren las cookies de DropKiller' },
-        { status: 400 }
+        { error: 'Servicio no configurado. Contacta al administrador.' },
+        { status: 500 }
       )
     }
     
@@ -22,20 +24,21 @@ export async function POST(req: NextRequest) {
       page: filters.page || 1,
     })
     
-    // Intentar fetch directo con cookies
+    // Fetch con cookies de la cuenta premium
     const response = await fetch(url, {
       headers: {
-        'Cookie': cookies,
+        'Cookie': PRODUCT_RESEARCH_COOKIES,
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
         'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
         'Referer': 'https://app.dropkiller.com/dashboard',
       },
     })
-    
+
     if (!response.ok) {
+      console.error('[ProductSearch] Fetch failed:', response.status)
       return NextResponse.json(
-        { error: 'Error al conectar con DropKiller. Verifica tus cookies.' },
+        { error: 'Error al buscar productos. Intenta de nuevo.' },
         { status: response.status }
       )
     }
@@ -64,7 +67,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// Parser básico - esto necesita ajustarse según la estructura real del HTML de DropKiller
+// Parser básico - ajustar según la estructura del HTML
 function parseProductsFromHtml(html: string): Product[] {
   const products: Product[] = []
   

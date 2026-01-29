@@ -1,5 +1,5 @@
 import { ProductFilters } from './types'
-import { DROPKILLER_BASE_URL } from './constants'
+import { PRODUCT_API_BASE_URL } from './constants'
 
 export function buildDropKillerUrl(filters: ProductFilters): string {
   const params = new URLSearchParams()
@@ -38,5 +38,5 @@ export function buildDropKillerUrl(filters: ProductFilters): string {
     params.set('creation-date', `${filters.dateRange.from}/${filters.dateRange.to}`)
   }
   
-  return `${DROPKILLER_BASE_URL}/dashboard/products?${params.toString()}`
+  return `${PRODUCT_API_BASE_URL}/dashboard/products?${params.toString()}`
 }

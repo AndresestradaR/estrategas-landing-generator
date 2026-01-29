@@ -1,4 +1,4 @@
-// IDs de países para DropKiller
+// IDs de países para búsqueda de productos
 export const COUNTRY_IDS = {
   colombia: '65c75a5f-0c4a-45fb-8c90-5b538805a15a',
   ecuador: '82811e8b-d17d-4ab9-847a-fa925785d566',
@@ -36,4 +36,4 @@ export const PLATFORMS = [
   { id: 'mastershop', name: 'Mastershop', countries: ['CO'] },
 ] as const
 
-export const DROPKILLER_BASE_URL = 'https://app.dropkiller.com'
+export const PRODUCT_API_BASE_URL = 'https://app.dropkiller.com'

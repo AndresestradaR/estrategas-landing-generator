@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import { ProductFilters } from '@/components/productos/ProductFilters'
 import { ProductTable } from '@/components/productos/ProductTable'
-import { CookieInput } from '@/components/productos/CookieInput'
 import { Product, ProductFilters as Filters } from '@/lib/dropkiller/types'
 import { Target, AlertCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -11,15 +10,9 @@ import toast from 'react-hot-toast'
 export default function ProductResearchPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [isLoading, setIsLoading] = useState(false)
-  const [cookies, setCookies] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const handleSearch = async (filters: Filters) => {
-    if (!cookies) {
-      toast.error('Primero ingresa tus cookies de DropKiller')
-      return
-    }
-
     setIsLoading(true)
     setError(null)
 
@@ -27,7 +20,7 @@ export default function ProductResearchPage() {
       const response = await fetch('/api/productos/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filters, cookies }),
+        body: JSON.stringify({ filters }),
       })
 
       const data = await response.json()
@@ -64,13 +57,10 @@ export default function ProductResearchPage() {
             Encuentra tu Producto Ganador
           </h1>
           <p className="text-text-secondary">
-            Busca productos con buenos números usando datos de DropKiller
+            Busca productos con buenos números de ventas en múltiples plataformas
           </p>
         </div>
       </div>
-
-      {/* Cookie Input */}
-      <CookieInput onCookiesChange={setCookies} />
 
       {/* Filters */}
       <ProductFilters onSearch={handleSearch} isLoading={isLoading} />
@@ -88,11 +78,6 @@ export default function ProductResearchPage() {
 
       {/* Results Table */}
       <ProductTable products={products} isLoading={isLoading} />
-
-      {/* Info Footer */}
-      <div className="text-center text-sm text-text-secondary/70 py-4">
-        <p>Los datos provienen de DropKiller. Necesitas una suscripción activa para usar esta herramienta.</p>
-      </div>
     </div>
   )
 }
