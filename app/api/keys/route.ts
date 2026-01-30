@@ -13,7 +13,7 @@ export async function GET() {
 
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('google_api_key, openai_api_key, kie_api_key, bfl_api_key')
+      .select('google_api_key, openai_api_key, kie_api_key, bfl_api_key, rtrvr_api_key, elevenlabs_api_key')
       .eq('id', user.id)
       .single()
 
@@ -35,6 +35,12 @@ export async function GET() {
       // BFL
       maskedBflApiKey: mask(profile.bfl_api_key),
       hasBflApiKey: !!profile.bfl_api_key,
+      // rtrvr.ai
+      maskedRtrvrApiKey: mask(profile.rtrvr_api_key),
+      hasRtrvrApiKey: !!profile.rtrvr_api_key,
+      // ElevenLabs
+      maskedElevenlabsApiKey: mask(profile.elevenlabs_api_key),
+      hasElevenlabsApiKey: !!profile.elevenlabs_api_key,
     })
   } catch (error) {
     return NextResponse.json({ error: 'Error interno' }, { status: 500 })
@@ -51,7 +57,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { googleApiKey, openaiApiKey, kieApiKey, bflApiKey } = body
+    const { googleApiKey, openaiApiKey, kieApiKey, bflApiKey, rtrvrApiKey, elevenlabsApiKey } = body
 
     // Build update object with only provided keys
     const updateData: Record<string, string> = {}
@@ -67,6 +73,12 @@ export async function POST(request: Request) {
     }
     if (bflApiKey) {
       updateData.bfl_api_key = encrypt(bflApiKey)
+    }
+    if (rtrvrApiKey) {
+      updateData.rtrvr_api_key = encrypt(rtrvrApiKey)
+    }
+    if (elevenlabsApiKey) {
+      updateData.elevenlabs_api_key = encrypt(elevenlabsApiKey)
     }
 
     if (Object.keys(updateData).length === 0) {
