@@ -5,16 +5,34 @@ import { ProductFilters } from '@/components/productos/ProductFilters'
 import { ProductTable } from '@/components/productos/ProductTable'
 import { CookieInput } from '@/components/productos/CookieInput'
 import { Product, ProductFilters as Filters } from '@/lib/dropkiller/types'
-import { Target, AlertCircle, Search, Users, TrendingUp, DollarSign, ExternalLink, Loader2, CheckCircle, XCircle, BarChart3, Calculator, Truck, Package, Megaphone, PiggyBank, Flame, Sparkles, TrendingDown, Settings, Gift, Tag } from 'lucide-react'
+import { Target, AlertCircle, Search, Users, TrendingUp, DollarSign, ExternalLink, Loader2, CheckCircle, XCircle, BarChart3, Calculator, Truck, Package, Megaphone, PiggyBank, Flame, Sparkles, TrendingDown, Settings, Gift, Tag, Check, Square, CheckSquare, ArrowRight } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Link from 'next/link'
 
 type TabType = 'search' | 'competitor'
+type AnalysisPhase = 'search' | 'select' | 'analyze' | 'results'
 
-interface CompetitorResult {
-  adUrl: string
-  landingUrl: string
+// Fase 1: Resultados de búsqueda
+interface SearchAd {
+  id: string
   advertiserName: string
+  landingUrl: string
+  adText: string
+  ctaText: string
+  adLibraryUrl: string
+  dropshippingScore: number
+  imageUrl: string | null
+  domain: string
+}
+
+// Fase 2: Resultados analizados
+interface AnalyzedCompetitor {
+  id: string
+  advertiserName: string
+  landingUrl: string
+  adLibraryUrl: string
+  adText: string
+  ctaText: string
   price: number | null
   priceFormatted: string | null
   combo: string | null
@@ -22,13 +40,13 @@ interface CompetitorResult {
   angle: string | null
   headline: string | null
   cta: string | null
-  adStatus: string
   error?: string
 }
 
 interface AnalysisStats {
-  count: number
-  successCount: number
+  total: number
+  analyzed: number
+  withPrice: number
   priceMin: number | null
   priceMax: number | null
   priceAvg: number | null
@@ -43,14 +61,22 @@ export default function ProductResearchPage() {
   const [cookies, setCookies] = useState('')
   const [error, setError] = useState<string | null>(null)
   
-  // State para análisis de competencia
+  // State para análisis de competencia - Nuevo flujo 2 fases
   const [competitorKeyword, setCompetitorKeyword] = useState('')
   const [competitorCountry, setCompetitorCountry] = useState('CO')
+  const [analysisPhase, setAnalysisPhase] = useState<AnalysisPhase>('search')
+  const [isSearching, setIsSearching] = useState(false)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [analysisResults, setAnalysisResults] = useState<CompetitorResult[] | null>(null)
+  
+  // Fase 1: Búsqueda
+  const [searchResults, setSearchResults] = useState<SearchAd[]>([])
+  const [selectedAds, setSelectedAds] = useState<Set<string>>(new Set())
+  const [searchStats, setSearchStats] = useState<{ totalFound: number; filteredCount: number } | null>(null)
+  
+  // Fase 2: Análisis
+  const [analysisResults, setAnalysisResults] = useState<AnalyzedCompetitor[] | null>(null)
   const [analysisStats, setAnalysisStats] = useState<AnalysisStats | null>(null)
   const [analysisError, setAnalysisError] = useState<string | null>(null)
-  const [analysisStep, setAnalysisStep] = useState(0)
 
   // State para calculadora de márgenes
   const [costProduct, setCostProduct] = useState<number | ''>('')
@@ -96,26 +122,23 @@ export default function ProductResearchPage() {
     }
   }
 
-  // Análisis de competencia REAL con rtrvr.ai
-  const handleAnalyzeCompetitors = async () => {
+  // FASE 1: Búsqueda rápida de anuncios
+  const handleSearchCompetitors = async () => {
     if (!competitorKeyword.trim() || competitorKeyword.trim().length < 2) {
       toast.error('Ingresa una palabra clave (mínimo 2 caracteres)')
       return
     }
 
-    setIsAnalyzing(true)
+    setIsSearching(true)
+    setSearchResults([])
+    setSelectedAds(new Set())
     setAnalysisResults(null)
     setAnalysisStats(null)
     setAnalysisError(null)
-    setAnalysisStep(1)
+    setAnalysisPhase('search')
 
     try {
-      // Simular progreso mientras espera
-      const progressInterval = setInterval(() => {
-        setAnalysisStep(prev => prev < 4 ? prev + 1 : prev)
-      }, 3000)
-
-      const response = await fetch('/api/competitor-analysis', {
+      const response = await fetch('/api/competitor-search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -124,40 +147,115 @@ export default function ProductResearchPage() {
         }),
       })
 
-      clearInterval(progressInterval)
-      setAnalysisStep(5)
-
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Error al analizar competencia')
+        throw new Error(data.error || 'Error al buscar competidores')
       }
 
-      if (data.competitors.length === 0) {
-        toast('No se encontraron competidores activos para esta keyword', { icon: '🔍' })
+      if (data.ads.length === 0) {
+        toast('No se encontraron anuncios de ecommerce para esta keyword', { icon: '🔍' })
+        setAnalysisPhase('search')
       } else {
-        setAnalysisResults(data.competitors)
-        setAnalysisStats(data.stats)
-        toast.success(`Se encontraron ${data.stats.count} competidores, ${data.stats.successCount} con precios`)
+        setSearchResults(data.ads)
+        setSearchStats({ totalFound: data.totalFound, filteredCount: data.filteredCount })
+        setAnalysisPhase('select')
+        toast.success(`Se encontraron ${data.ads.length} tiendas de ecommerce`)
       }
     } catch (err: any) {
       const message = err.message || 'Error desconocido'
       setAnalysisError(message)
       toast.error(message)
     } finally {
-      setIsAnalyzing(false)
-      setAnalysisStep(0)
+      setIsSearching(false)
     }
   }
 
-  // Pasos del análisis
-  const analysisSteps = [
-    { step: 1, label: 'Buscando anuncios en Meta Ads Library...' },
-    { step: 2, label: 'Identificando tiendas activas...' },
-    { step: 3, label: 'Extrayendo landing pages...' },
-    { step: 4, label: 'Analizando precios y ofertas...' },
-    { step: 5, label: '¡Listo!' },
-  ]
+  // FASE 2: Análisis profundo de seleccionados
+  const handleAnalyzeSelected = async () => {
+    if (selectedAds.size === 0) {
+      toast.error('Selecciona al menos un competidor para analizar')
+      return
+    }
+
+    const adsToAnalyze = searchResults.filter(ad => selectedAds.has(ad.id))
+
+    setIsAnalyzing(true)
+    setAnalysisPhase('analyze')
+    setAnalysisError(null)
+
+    try {
+      const response = await fetch('/api/competitor-analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ads: adsToAnalyze }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al analizar competidores')
+      }
+
+      setAnalysisResults(data.competitors)
+      setAnalysisStats(data.stats)
+      setAnalysisPhase('results')
+      
+      if (data.stats.withPrice > 0) {
+        toast.success(`Análisis completo: ${data.stats.withPrice} con precios encontrados`)
+      } else {
+        toast('Análisis completo, pero no se encontraron precios', { icon: '⚠️' })
+      }
+    } catch (err: any) {
+      const message = err.message || 'Error desconocido'
+      setAnalysisError(message)
+      setAnalysisPhase('select')
+      toast.error(message)
+    } finally {
+      setIsAnalyzing(false)
+    }
+  }
+
+  // Toggle selección de anuncio
+  const toggleAdSelection = (id: string) => {
+    const newSelected = new Set(selectedAds)
+    if (newSelected.has(id)) {
+      newSelected.delete(id)
+    } else {
+      if (newSelected.size >= 10) {
+        toast.error('Máximo 10 competidores por análisis')
+        return
+      }
+      newSelected.add(id)
+    }
+    setSelectedAds(newSelected)
+  }
+
+  // Seleccionar/deseleccionar todos
+  const toggleSelectAll = () => {
+    if (selectedAds.size === searchResults.length) {
+      setSelectedAds(new Set())
+    } else {
+      const maxToSelect = searchResults.slice(0, 10)
+      setSelectedAds(new Set(maxToSelect.map(ad => ad.id)))
+    }
+  }
+
+  // Volver a búsqueda
+  const handleBackToSearch = () => {
+    setAnalysisPhase('search')
+    setSearchResults([])
+    setSelectedAds(new Set())
+    setAnalysisResults(null)
+    setAnalysisStats(null)
+  }
+
+  // Volver a selección
+  const handleBackToSelect = () => {
+    setAnalysisPhase('select')
+    setAnalysisResults(null)
+    setAnalysisStats(null)
+  }
 
   // Cálculos de margen
   const marginCalc = useMemo(() => {
@@ -220,6 +318,13 @@ export default function ProductResearchPage() {
       verdictTip
     }
   }, [analysisStats, costProduct, costShipping, costCPA, effectiveRate])
+
+  // Score badge color
+  const getScoreBadge = (score: number) => {
+    if (score >= 5) return { bg: 'bg-green-500/20', text: 'text-green-500', label: 'Alto' }
+    if (score >= 2) return { bg: 'bg-yellow-500/20', text: 'text-yellow-500', label: 'Medio' }
+    return { bg: 'bg-gray-500/20', text: 'text-gray-400', label: 'Bajo' }
+  }
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
@@ -288,89 +393,112 @@ export default function ProductResearchPage() {
       {/* Tab Content: Analizar Competencia */}
       {activeTab === 'competitor' && (
         <div className="space-y-6">
-          {/* Search Form */}
-          <div className="bg-surface rounded-xl border border-border p-6 space-y-4">
-            <div className="flex items-center gap-2 mb-4">
-              <BarChart3 className="w-5 h-5 text-accent" />
-              <h2 className="text-lg font-semibold text-text-primary">Análisis de Competencia</h2>
-            </div>
-            
-            <p className="text-text-secondary text-sm">
-              Escribe el nombre del producto y automáticamente buscaremos quién lo está vendiendo en Meta Ads, 
-              extraeremos sus landing pages y analizaremos precios, combos y ofertas.
-            </p>
+          {/* Search Form - Siempre visible excepto en resultados */}
+          {analysisPhase !== 'results' && (
+            <div className="bg-surface rounded-xl border border-border p-6 space-y-4">
+              <div className="flex items-center gap-2 mb-4">
+                <BarChart3 className="w-5 h-5 text-accent" />
+                <h2 className="text-lg font-semibold text-text-primary">
+                  {analysisPhase === 'search' ? 'Buscar Competencia' : 'Búsqueda: ' + competitorKeyword}
+                </h2>
+              </div>
+              
+              {analysisPhase === 'search' && (
+                <p className="text-text-secondary text-sm">
+                  Escribe el nombre del producto y buscaremos quién lo está vendiendo en Meta Ads.
+                  Luego podrás seleccionar cuáles analizar en detalle.
+                </p>
+              )}
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Keyword */}
-              <div className="md:col-span-2">
-                <label className="flex items-center gap-2 text-sm font-medium text-text-secondary mb-2">
-                  <Search className="w-4 h-4" />
-                  Producto a buscar
-                </label>
-                <input
-                  type="text"
-                  value={competitorKeyword}
-                  onChange={(e) => setCompetitorKeyword(e.target.value)}
-                  placeholder="Ej: sartén antiadherente, faja colombiana, serum vitamina c"
-                  className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/50"
-                  onKeyDown={(e) => e.key === 'Enter' && handleAnalyzeCompetitors()}
-                />
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="md:col-span-2">
+                  <label className="flex items-center gap-2 text-sm font-medium text-text-secondary mb-2">
+                    <Search className="w-4 h-4" />
+                    Producto a buscar
+                  </label>
+                  <input
+                    type="text"
+                    value={competitorKeyword}
+                    onChange={(e) => setCompetitorKeyword(e.target.value)}
+                    placeholder="Ej: sartén antiadherente, faja colombiana, serum vitamina c"
+                    className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/50"
+                    onKeyDown={(e) => e.key === 'Enter' && handleSearchCompetitors()}
+                    disabled={analysisPhase !== 'search'}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-text-secondary mb-2">
+                    País
+                  </label>
+                  <select
+                    value={competitorCountry}
+                    onChange={(e) => setCompetitorCountry(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/50"
+                    disabled={analysisPhase !== 'search'}
+                  >
+                    <option value="CO">🇨🇴 Colombia</option>
+                    <option value="MX">🇲🇽 México</option>
+                    <option value="GT">🇬🇹 Guatemala</option>
+                    <option value="PE">🇵🇪 Perú</option>
+                    <option value="EC">🇪🇨 Ecuador</option>
+                    <option value="CL">🇨🇱 Chile</option>
+                    <option value="AR">🇦🇷 Argentina</option>
+                    <option value="PY">🇵🇾 Paraguay</option>
+                  </select>
+                </div>
               </div>
 
-              {/* Country */}
-              <div>
-                <label className="block text-sm font-medium text-text-secondary mb-2">
-                  País
-                </label>
-                <select
-                  value={competitorCountry}
-                  onChange={(e) => setCompetitorCountry(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/50"
-                >
-                  <option value="CO">🇨🇴 Colombia</option>
-                  <option value="MX">🇲🇽 México</option>
-                  <option value="GT">🇬🇹 Guatemala</option>
-                  <option value="PE">🇵🇪 Perú</option>
-                  <option value="EC">🇪🇨 Ecuador</option>
-                  <option value="CL">🇨🇱 Chile</option>
-                  <option value="AR">🇦🇷 Argentina</option>
-                  <option value="PY">🇵🇾 Paraguay</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-4">
-              <button
-                onClick={handleAnalyzeCompetitors}
-                disabled={isAnalyzing}
-                className="px-6 py-3 bg-accent hover:bg-accent/90 disabled:bg-accent/50 text-background font-medium rounded-lg transition-colors flex items-center gap-2"
-              >
-                {isAnalyzing ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Analizando...
-                  </>
+              <div className="flex items-center gap-4">
+                {analysisPhase === 'search' ? (
+                  <button
+                    onClick={handleSearchCompetitors}
+                    disabled={isSearching}
+                    className="px-6 py-3 bg-accent hover:bg-accent/90 disabled:bg-accent/50 text-background font-medium rounded-lg transition-colors flex items-center gap-2"
+                  >
+                    {isSearching ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Buscando...
+                      </>
+                    ) : (
+                      <>
+                        <Search className="w-5 h-5" />
+                        Buscar Competidores
+                      </>
+                    )}
+                  </button>
                 ) : (
-                  <>
-                    <Search className="w-5 h-5" />
-                    Buscar Competidores
-                  </>
+                  <button
+                    onClick={handleBackToSearch}
+                    className="px-4 py-2 text-text-secondary hover:text-text-primary transition-colors flex items-center gap-2"
+                  >
+                    ← Nueva búsqueda
+                  </button>
                 )}
-              </button>
 
-              <Link 
-                href="/dashboard/settings"
-                className="text-sm text-text-secondary hover:text-accent transition-colors flex items-center gap-1"
-              >
-                <Settings className="w-4 h-4" />
-                Configurar API Key
-              </Link>
+                <Link 
+                  href="/dashboard/settings"
+                  className="text-sm text-text-secondary hover:text-accent transition-colors flex items-center gap-1"
+                >
+                  <Settings className="w-4 h-4" />
+                  Configurar API Key
+                </Link>
+              </div>
+
+              {analysisPhase === 'search' && (
+                <p className="text-xs text-text-secondary/70">
+                  💡 Usa keywords específicas para mejores resultados. Ej: &quot;sartén cerámica&quot; en vez de solo &quot;sartén&quot;
+                </p>
+              )}
+
+              {searchStats && analysisPhase === 'select' && (
+                <p className="text-xs text-text-secondary/70">
+                  📊 Se encontraron {searchStats.totalFound} anuncios, {searchStats.filteredCount} pasaron los filtros de ecommerce, mostrando {searchResults.length} únicos
+                </p>
+              )}
             </div>
-
-            <p className="text-xs text-text-secondary/70">
-              💡 Usa keywords específicas para mejores resultados. Ej: &quot;sartén cerámica&quot; en vez de solo &quot;sartén&quot;
-            </p>
-          </div>
+          )}
 
           {/* Error Alert */}
           {analysisError && (
@@ -392,46 +520,170 @@ export default function ProductResearchPage() {
             </div>
           )}
 
-          {/* Analysis Progress */}
-          {isAnalyzing && (
-            <div className="bg-surface rounded-xl border border-border p-6">
-              <h3 className="text-lg font-semibold text-text-primary mb-4">
-                Buscando competidores para &quot;{competitorKeyword}&quot;...
-              </h3>
-              <div className="space-y-3">
-                {analysisSteps.slice(0, -1).map((step) => (
-                  <div key={step.step} className="flex items-center gap-3">
-                    {analysisStep > step.step ? (
-                      <CheckCircle className="w-5 h-5 text-green-500" />
-                    ) : analysisStep === step.step ? (
-                      <Loader2 className="w-5 h-5 text-accent animate-spin" />
+          {/* FASE 1: Selección de competidores */}
+          {analysisPhase === 'select' && searchResults.length > 0 && (
+            <div className="space-y-4">
+              {/* Selection Header */}
+              <div className="bg-surface rounded-xl border border-border p-4 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={toggleSelectAll}
+                    className="flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary transition-colors"
+                  >
+                    {selectedAds.size === searchResults.length ? (
+                      <CheckSquare className="w-5 h-5 text-accent" />
                     ) : (
-                      <div className="w-5 h-5 rounded-full border-2 border-border" />
+                      <Square className="w-5 h-5" />
                     )}
-                    <span className={analysisStep >= step.step ? 'text-text-primary' : 'text-text-secondary'}>
-                      {step.label}
-                    </span>
-                  </div>
-                ))}
+                    Seleccionar todos
+                  </button>
+                  <span className="text-sm text-text-secondary">
+                    {selectedAds.size} de {searchResults.length} seleccionados
+                  </span>
+                </div>
+
+                <button
+                  onClick={handleAnalyzeSelected}
+                  disabled={selectedAds.size === 0 || isAnalyzing}
+                  className="px-6 py-2.5 bg-accent hover:bg-accent/90 disabled:bg-accent/30 text-background font-medium rounded-lg transition-colors flex items-center gap-2"
+                >
+                  {isAnalyzing ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Analizando...
+                    </>
+                  ) : (
+                    <>
+                      Analizar Seleccionados
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
               </div>
-              <p className="text-sm text-text-secondary mt-4">
-                ⏱️ Esto puede tomar 30-60 segundos dependiendo de cuántos anuncios encuentre
+
+              {/* Ad Cards Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {searchResults.map((ad) => {
+                  const isSelected = selectedAds.has(ad.id)
+                  const scoreBadge = getScoreBadge(ad.dropshippingScore)
+                  
+                  return (
+                    <div
+                      key={ad.id}
+                      onClick={() => toggleAdSelection(ad.id)}
+                      className={`bg-surface rounded-xl border-2 p-4 cursor-pointer transition-all hover:shadow-lg ${
+                        isSelected 
+                          ? 'border-accent bg-accent/5' 
+                          : 'border-border hover:border-accent/50'
+                      }`}
+                    >
+                      {/* Card Header */}
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-semibold text-text-primary truncate">
+                              {ad.advertiserName}
+                            </h3>
+                            {isSelected && (
+                              <CheckCircle className="w-5 h-5 text-accent flex-shrink-0" />
+                            )}
+                          </div>
+                          <p className="text-xs text-text-secondary truncate">{ad.domain}</p>
+                        </div>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${scoreBadge.bg} ${scoreBadge.text}`}>
+                          {scoreBadge.label}
+                        </span>
+                      </div>
+
+                      {/* CTA Badge */}
+                      {ad.ctaText && (
+                        <div className="mb-3">
+                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-accent/10 text-accent rounded text-xs font-medium">
+                            🔘 {ad.ctaText}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Ad Text Preview */}
+                      <p className="text-sm text-text-secondary line-clamp-3 mb-3">
+                        {ad.adText || 'Sin texto del anuncio'}
+                      </p>
+
+                      {/* Actions */}
+                      <div className="flex items-center gap-2 pt-2 border-t border-border">
+                        <a
+                          href={ad.landingUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-xs text-accent hover:underline flex items-center gap-1"
+                        >
+                          Ver landing <ExternalLink className="w-3 h-3" />
+                        </a>
+                        {ad.adLibraryUrl && (
+                          <a
+                            href={ad.adLibraryUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-xs text-text-secondary hover:text-accent flex items-center gap-1"
+                          >
+                            Ver anuncio <ExternalLink className="w-3 h-3" />
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <p className="text-center text-xs text-text-secondary/70">
+                💡 Selecciona los competidores relevantes para tu producto. El análisis de precios usa rtrvr.ai (~$0.12 por landing)
               </p>
             </div>
           )}
 
-          {/* Analysis Results */}
-          {analysisResults && analysisStats && (
+          {/* FASE 2: Analizando */}
+          {analysisPhase === 'analyze' && (
+            <div className="bg-surface rounded-xl border border-border p-8 text-center">
+              <Loader2 className="w-12 h-12 text-accent animate-spin mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-text-primary mb-2">
+                Analizando {selectedAds.size} landing pages...
+              </h3>
+              <p className="text-text-secondary">
+                Esto puede tomar 30-60 segundos. Estamos extrayendo precios, combos y ofertas.
+              </p>
+            </div>
+          )}
+
+          {/* FASE 3: Resultados */}
+          {analysisPhase === 'results' && analysisResults && analysisStats && (
             <>
+              {/* Back Button */}
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={handleBackToSelect}
+                  className="text-text-secondary hover:text-text-primary transition-colors flex items-center gap-2"
+                >
+                  ← Volver a selección
+                </button>
+                <button
+                  onClick={handleBackToSearch}
+                  className="text-text-secondary hover:text-text-primary transition-colors flex items-center gap-2"
+                >
+                  🔍 Nueva búsqueda
+                </button>
+              </div>
+
               {/* Summary Cards */}
               <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
                 <div className="bg-surface rounded-xl border border-border p-4">
                   <div className="flex items-center gap-2 text-text-secondary mb-1">
                     <Users className="w-4 h-4" />
-                    <span className="text-sm">Competidores</span>
+                    <span className="text-sm">Analizados</span>
                   </div>
                   <p className="text-2xl font-bold text-text-primary">
-                    {analysisStats.successCount}/{analysisStats.count}
+                    {analysisStats.analyzed}/{analysisStats.total}
                   </p>
                 </div>
 
@@ -508,7 +760,7 @@ export default function ProductResearchPage() {
                               {competitor.error ? (
                                 <span className="text-red-500 text-xs flex items-center gap-1">
                                   <XCircle className="w-3 h-3" />
-                                  Error al analizar
+                                  {competitor.error}
                                 </span>
                               ) : (
                                 <a 
@@ -765,39 +1017,51 @@ export default function ProductResearchPage() {
               )}
 
               <div className="text-center text-sm text-text-secondary/70 py-4">
-                <p>Los datos se extraen usando rtrvr.ai (~$0.12 por búsqueda + ~$0.12 por cada landing page analizada)</p>
+                <p>Los datos de precios se extrajeron usando rtrvr.ai (~$0.12 por cada landing page analizada)</p>
               </div>
             </>
           )}
 
           {/* Empty State */}
-          {!isAnalyzing && !analysisResults && !analysisError && (
+          {analysisPhase === 'search' && !isSearching && searchResults.length === 0 && !analysisError && (
             <div className="bg-surface rounded-xl border border-border p-12 text-center">
               <div className="w-16 h-16 bg-accent/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
                 <Users className="w-8 h-8 text-accent" />
               </div>
               <h3 className="text-lg font-semibold text-text-primary mb-2">
-                Espía a tu competencia automáticamente
+                Espía a tu competencia en 2 pasos
               </h3>
               <p className="text-text-secondary max-w-md mx-auto mb-4">
-                Escribe el nombre del producto (ej: &quot;sartén antiadherente&quot;) y automáticamente:
+                Busca, selecciona y analiza solo los competidores que te interesan:
               </p>
-              <ol className="text-left max-w-sm mx-auto text-sm text-text-secondary space-y-2">
-                <li className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-accent/20 text-accent flex items-center justify-center text-xs font-bold">1</span>
-                  Buscamos en Meta Ads Library quién lo vende
+              <ol className="text-left max-w-sm mx-auto text-sm text-text-secondary space-y-3">
+                <li className="flex items-start gap-3">
+                  <span className="w-6 h-6 rounded-full bg-accent/20 text-accent flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">1</span>
+                  <div>
+                    <strong className="text-text-primary">Búsqueda rápida (~15 seg)</strong>
+                    <p className="text-xs">Encontramos tiendas en Meta Ads, filtradas por CTAs de ecommerce</p>
+                  </div>
                 </li>
-                <li className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-accent/20 text-accent flex items-center justify-center text-xs font-bold">2</span>
-                  Entramos a cada landing page
+                <li className="flex items-start gap-3">
+                  <span className="w-6 h-6 rounded-full bg-accent/20 text-accent flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">2</span>
+                  <div>
+                    <strong className="text-text-primary">Selecciona los relevantes</strong>
+                    <p className="text-xs">Elige solo los que venden tu producto, ignora el resto</p>
+                  </div>
                 </li>
-                <li className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-accent/20 text-accent flex items-center justify-center text-xs font-bold">3</span>
-                  Extraemos precios, combos, regalos y ángulos
+                <li className="flex items-start gap-3">
+                  <span className="w-6 h-6 rounded-full bg-accent/20 text-accent flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">3</span>
+                  <div>
+                    <strong className="text-text-primary">Análisis profundo</strong>
+                    <p className="text-xs">Extraemos precios, combos, regalos y ángulos de venta</p>
+                  </div>
                 </li>
-                <li className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-accent/20 text-accent flex items-center justify-center text-xs font-bold">4</span>
-                  Te decimos si el margen da o no da
+                <li className="flex items-start gap-3">
+                  <span className="w-6 h-6 rounded-full bg-accent/20 text-accent flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">4</span>
+                  <div>
+                    <strong className="text-text-primary">Calculadora de márgenes</strong>
+                    <p className="text-xs">Te decimos si el margen da o toca buscar otro producto</p>
+                  </div>
                 </li>
               </ol>
             </div>
