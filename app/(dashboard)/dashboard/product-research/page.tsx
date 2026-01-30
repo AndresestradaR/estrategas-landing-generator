@@ -4,12 +4,13 @@ import { useState, useMemo } from 'react'
 import { ProductFilters } from '@/components/productos/ProductFilters'
 import { ProductTable } from '@/components/productos/ProductTable'
 import { CookieInput } from '@/components/productos/CookieInput'
+import { ProductExplorer } from '@/components/productos/ProductExplorer'
 import { Product, ProductFilters as Filters } from '@/lib/dropkiller/types'
-import { Target, AlertCircle, Search, Users, TrendingUp, DollarSign, ExternalLink, Loader2, CheckCircle, XCircle, BarChart3, Calculator, Truck, Package, Megaphone, PiggyBank, Flame, Sparkles, TrendingDown, Settings, Gift, Tag, Check, Square, CheckSquare, ArrowRight } from 'lucide-react'
+import { Target, AlertCircle, Search, Users, TrendingUp, DollarSign, ExternalLink, Loader2, CheckCircle, XCircle, BarChart3, Calculator, Truck, Package, Megaphone, PiggyBank, Flame, Sparkles, TrendingDown, Settings, Gift, Tag, Check, Square, CheckSquare, ArrowRight, Database } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Link from 'next/link'
 
-type TabType = 'search' | 'competitor'
+type TabType = 'catalog' | 'search' | 'competitor'
 type AnalysisPhase = 'search' | 'select' | 'analyze' | 'results'
 
 // Fase 1: Resultados de búsqueda
@@ -55,7 +56,7 @@ interface AnalysisStats {
 }
 
 export default function ProductResearchPage() {
-  const [activeTab, setActiveTab] = useState<TabType>('search')
+  const [activeTab, setActiveTab] = useState<TabType>('catalog')
   const [products, setProducts] = useState<Product[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [cookies, setCookies] = useState('')
@@ -338,13 +339,25 @@ export default function ProductResearchPage() {
             Encuentra tu Producto Ganador
           </h1>
           <p className="text-text-secondary">
-            Busca productos con buenos números y analiza la competencia
+            Explora el catálogo de Dropi, busca en tiempo real o analiza la competencia
           </p>
         </div>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-2 p-1 bg-surface rounded-xl border border-border w-fit">
+        <button
+          onClick={() => setActiveTab('catalog')}
+          className={`px-4 py-2.5 rounded-lg font-medium transition-all flex items-center gap-2 ${
+            activeTab === 'catalog'
+              ? 'bg-accent text-background'
+              : 'text-text-secondary hover:text-text-primary hover:bg-background'
+          }`}
+        >
+          <Database className="w-4 h-4" />
+          Explorar Catálogo
+          <span className="text-xs bg-green-500/20 text-green-500 px-1.5 py-0.5 rounded">14k+</span>
+        </button>
         <button
           onClick={() => setActiveTab('search')}
           className={`px-4 py-2.5 rounded-lg font-medium transition-all flex items-center gap-2 ${
@@ -354,7 +367,7 @@ export default function ProductResearchPage() {
           }`}
         >
           <Search className="w-4 h-4" />
-          Buscar Productos
+          Buscar en Vivo
         </button>
         <button
           onClick={() => setActiveTab('competitor')}
@@ -368,6 +381,11 @@ export default function ProductResearchPage() {
           Analizar Competencia
         </button>
       </div>
+
+      {/* Tab Content: Explorar Catálogo */}
+      {activeTab === 'catalog' && (
+        <ProductExplorer />
+      )}
 
       {/* Tab Content: Buscar Productos */}
       {activeTab === 'search' && (
