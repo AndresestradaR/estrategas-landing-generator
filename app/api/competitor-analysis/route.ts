@@ -5,6 +5,39 @@ import { decrypt } from '@/lib/services/encryption'
 const APIFY_API_URL = 'https://api.apify.com/v2/acts/curious_coder~facebook-ads-library-scraper/run-sync-get-dataset-items'
 const RTRVR_API_URL = 'https://api.rtrvr.ai/execute'
 
+// Keywords que indican dropshipping/COD en LATAM
+const DROPSHIPPING_KEYWORDS = [
+  'envío gratis', 'envio gratis',
+  'pago contra entrega', 'pago contraentrega', 'contraentrega',
+  'paga en casa', 'paga cuando recibas',
+  'pago contra reembolso', 'contrareembolso',
+  'cod', 'cash on delivery',
+  'oferta especial', 'oferta limitada',
+  'últimas unidades', 'ultimas unidades',
+  'compra ahora', 'pídelo ahora', 'pidelo ahora',
+  'garantía de satisfacción', 'garantia de satisfaccion',
+  'devolución gratis', 'devolucion gratis',
+  '50% de descuento', '50% off', '70% off',
+  'precio especial', 'promoción', 'promocion',
+]
+
+// Dominios a excluir (no son landing pages de ecommerce)
+const EXCLUDED_DOMAINS = [
+  'facebook.com',
+  'fb.com', 
+  'instagram.com',
+  'tiktok.com',
+  'youtube.com',
+  'twitter.com',
+  'x.com',
+  'linkedin.com',
+  'wa.me',
+  'whatsapp.com',
+  'bit.ly',
+  't.me',
+  'telegram.me',
+]
+
 interface CompetitorData {
   adUrl: string
   landingUrl: string
@@ -18,7 +51,45 @@ interface CompetitorData {
   cta: string | null
   adStatus: string
   adText: string | null
+  dropshippingScore: number
   error?: string
+}
+
+function calculateDropshippingScore(adText: string, ctaText: string, linkUrl: string): number {
+  const textToAnalyze = `${adText} ${ctaText} ${linkUrl}`.toLowerCase()
+  let score = 0
+  
+  for (const keyword of DROPSHIPPING_KEYWORDS) {
+    if (textToAnalyze.includes(keyword.toLowerCase())) {
+      score += 1
+    }
+  }
+  
+  // Bonus si tiene dominio propio (no redes sociales)
+  try {
+    const domain = new URL(linkUrl).hostname.toLowerCase()
+    if (!EXCLUDED_DOMAINS.some(excluded => domain.includes(excluded))) {
+      score += 2
+    }
+    // Bonus extra si parece tienda (shopify, tiendanube, etc)
+    if (domain.includes('myshopify') || domain.includes('tiendanube') || 
+        domain.includes('vnda') || domain.includes('loja')) {
+      score += 1
+    }
+  } catch {
+    // URL inválida
+  }
+  
+  return score
+}
+
+function isValidLandingUrl(url: string): boolean {
+  try {
+    const domain = new URL(url).hostname.toLowerCase()
+    return !EXCLUDED_DOMAINS.some(excluded => domain.includes(excluded))
+  } catch {
+    return false
+  }
 }
 
 export async function POST(request: Request) {
@@ -65,7 +136,6 @@ export async function POST(request: Request) {
 
     console.log('Searching Meta Ads Library with Apify:', metaAdsUrl)
 
-    // Add timeout=90 to prevent long waits
     const apifyResponse = await fetch(`${APIFY_API_URL}?token=${apifyApiKey}&timeout=90`, {
       method: 'POST',
       headers: {
@@ -78,8 +148,8 @@ export async function POST(request: Request) {
             method: 'GET'
           }
         ],
-        count: 10,
-        limitPerSource: 10,
+        count: 20, // Pedir más para tener suficientes después de filtrar
+        limitPerSource: 20,
         scrapeAdDetails: true,
       }),
     })
@@ -98,33 +168,51 @@ export async function POST(request: Request) {
     
     console.log('Apify response received, items:', Array.isArray(apifyData) ? apifyData.length : 'not array')
     
-    // Parse ads from Apify response
+    // Parse and score ads from Apify response
     let adsFound: Array<{ 
       advertiserName: string
       landingUrl: string
       adStatus: string
       adText: string
       adLibraryUrl: string
+      ctaText: string
+      dropshippingScore: number
     }> = []
     
     if (Array.isArray(apifyData) && apifyData.length > 0) {
       adsFound = apifyData
-        .filter((ad: any) => ad.snapshot?.link_url && ad.is_active)
-        .map((ad: any) => ({
-          advertiserName: ad.page_name || ad.snapshot?.page_name || 'Desconocido',
-          landingUrl: ad.snapshot.link_url,
-          adStatus: ad.is_active ? 'active' : 'inactive',
-          adText: ad.snapshot?.body?.text || '',
-          adLibraryUrl: ad.ad_library_url || '',
-        }))
+        .filter((ad: any) => {
+          // Must have link_url and be active
+          if (!ad.snapshot?.link_url || !ad.is_active) return false
+          // Must be a valid landing page (not social media)
+          if (!isValidLandingUrl(ad.snapshot.link_url)) return false
+          return true
+        })
+        .map((ad: any) => {
+          const adText = ad.snapshot?.body?.text || ''
+          const ctaText = ad.snapshot?.cta_text || ''
+          const linkUrl = ad.snapshot.link_url
+          
+          return {
+            advertiserName: ad.page_name || ad.snapshot?.page_name || 'Desconocido',
+            landingUrl: linkUrl,
+            adStatus: ad.is_active ? 'active' : 'inactive',
+            adText: adText,
+            adLibraryUrl: ad.ad_library_url || '',
+            ctaText: ctaText,
+            dropshippingScore: calculateDropshippingScore(adText, ctaText, linkUrl),
+          }
+        })
+        // Sort by dropshipping score (highest first)
+        .sort((a, b) => b.dropshippingScore - a.dropshippingScore)
     }
 
-    console.log(`Found ${adsFound.length} ads with landing URLs`)
+    console.log(`Found ${adsFound.length} valid ads after filtering`)
 
     if (adsFound.length === 0) {
       return NextResponse.json({
         success: true,
-        message: 'No se encontraron anuncios activos para esta keyword',
+        message: 'No se encontraron anuncios de ecommerce/dropshipping para esta keyword. Prueba con palabras más específicas del producto.',
         competitors: [],
         stats: {
           count: 0,
@@ -136,7 +224,7 @@ export async function POST(request: Request) {
       })
     }
 
-    // Remove duplicates by landing URL domain and limit to 5 for faster processing
+    // Remove duplicates by landing URL domain, keeping highest scored
     const seenDomains = new Set<string>()
     const uniqueAds = adsFound.filter(ad => {
       try {
@@ -147,7 +235,7 @@ export async function POST(request: Request) {
       } catch {
         return false
       }
-    }).slice(0, 5)
+    }).slice(0, 8) // Limit to 8 unique competitors
 
     console.log(`Processing ${uniqueAds.length} unique landing pages with rtrvr.ai`)
 
@@ -156,7 +244,7 @@ export async function POST(request: Request) {
       uniqueAds.map(async (ad) => {
         try {
           const controller = new AbortController()
-          const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 sec timeout per landing
+          const timeoutId = setTimeout(() => controller.abort(), 30000)
 
           const response = await fetch(RTRVR_API_URL, {
             method: 'POST',
@@ -211,6 +299,7 @@ Responde SOLO el JSON. Si no encuentras algo, usa null.`,
             advertiserName: ad.advertiserName,
             adStatus: ad.adStatus,
             adText: ad.adText,
+            dropshippingScore: ad.dropshippingScore,
             price: parsedResult.price ? Number(parsedResult.price) : null,
             priceFormatted: parsedResult.priceFormatted || null,
             combo: parsedResult.combo || null,
@@ -227,6 +316,7 @@ Responde SOLO el JSON. Si no encuentras algo, usa null.`,
             advertiserName: ad.advertiserName,
             adStatus: ad.adStatus,
             adText: ad.adText,
+            dropshippingScore: ad.dropshippingScore,
             price: null,
             priceFormatted: null,
             combo: null,
