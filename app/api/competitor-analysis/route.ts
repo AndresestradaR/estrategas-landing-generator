@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { decrypt } from '@/lib/services/encryption'
 
+const APIFY_API_URL = 'https://api.apify.com/v2/acts/curious_coder~facebook-ads-library-scraper/run-sync-get-dataset-items'
 const RTRVR_API_URL = 'https://api.rtrvr.ai/execute'
 
 interface CompetitorData {
@@ -16,6 +17,7 @@ interface CompetitorData {
   headline: string | null
   cta: string | null
   adStatus: string
+  adText: string | null
   error?: string
 }
 
@@ -28,7 +30,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    // Get user's rtrvr API key
+    // Get Apify API key from environment
+    const apifyApiKey = process.env.APIFY_API_TOKEN
+    if (!apifyApiKey) {
+      return NextResponse.json({ 
+        error: 'API key de Apify no configurada en el servidor.' 
+      }, { status: 500 })
+    }
+
+    // Get user's rtrvr API key for landing page scraping
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('rtrvr_api_key')
@@ -50,88 +60,53 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Palabra clave requerida (mínimo 2 caracteres)' }, { status: 400 })
     }
 
-    // Country code mapping for Meta Ads Library
-    const countryMap: Record<string, string> = {
-      'CO': 'Colombia',
-      'MX': 'Mexico',
-      'PE': 'Peru',
-      'EC': 'Ecuador',
-      'CL': 'Chile',
-      'AR': 'Argentina',
-      'GT': 'Guatemala',
-      'PY': 'Paraguay',
-    }
-
-    const countryName = countryMap[country] || 'Colombia'
-
-    // Step 1: Search Meta Ads Library and get landing page URLs
+    // Step 1: Search Meta Ads Library using Apify
     const metaAdsUrl = `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=${country}&q=${encodeURIComponent(keyword)}&search_type=keyword_unordered&media_type=all`
 
-    const searchResponse = await fetch(RTRVR_API_URL, {
+    console.log('Searching Meta Ads Library with Apify:', metaAdsUrl)
+
+    const apifyResponse = await fetch(`${APIFY_API_URL}?token=${apifyApiKey}`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${rtrvrApiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        input: `Estás en la Biblioteca de Anuncios de Meta (Facebook Ads Library).
-
-TAREA: Buscar anuncios activos relacionados con "${keyword}" en ${countryName}.
-
-PASOS:
-1. Espera a que carguen los anuncios (máximo 10 segundos)
-2. Si aparece un popup de cookies o términos, acéptalo
-3. Haz scroll hacia abajo 2-3 veces para cargar más anuncios
-4. Identifica hasta 8 anuncios diferentes de DIFERENTES anunciantes (no repitas el mismo anunciante)
-5. Para cada anuncio, extrae:
-   - El nombre del anunciante/página
-   - La URL de la landing page (el link "Ver sitio web" o el dominio que aparece)
-   - Si el anuncio está activo
-
-IMPORTANTE:
-- Solo anuncios que claramente venden el producto "${keyword}" o similar
-- Ignora anuncios de marcas muy grandes (Amazon, MercadoLibre, etc)
-- Busca tiendas pequeñas/medianas de dropshipping o ecommerce
-- Si no hay botón de "Ver sitio web", busca el dominio en el texto del anuncio
-
-Responde SOLO con un JSON array así:
-[
-  {
-    "advertiserName": "Nombre de la tienda",
-    "landingUrl": "https://ejemplo.com/producto",
-    "adStatus": "active"
-  }
-]
-
-Si no encuentras anuncios relevantes, responde con un array vacío: []`,
         urls: [metaAdsUrl],
-        response: {
-          verbosity: 'final',
-          inlineOutputMaxBytes: 100000
-        }
+        scrapeAdDetails: true,
+        totalRecordsRequired: 10,
       }),
     })
 
-    if (!searchResponse.ok) {
-      const errorData = await searchResponse.json().catch(() => ({}))
-      console.error('rtrvr.ai search error:', errorData)
-      throw new Error(errorData.error || `Error buscando en Meta Ads Library: HTTP ${searchResponse.status}`)
+    if (!apifyResponse.ok) {
+      const errorText = await apifyResponse.text()
+      console.error('Apify error:', errorText)
+      throw new Error(`Error buscando en Meta Ads Library: HTTP ${apifyResponse.status}`)
     }
 
-    const searchData = await searchResponse.json()
+    const apifyData = await apifyResponse.json()
     
-    // Parse the ads found
-    let adsFound: Array<{ advertiserName: string; landingUrl: string; adStatus: string }> = []
+    // Parse ads from Apify response
+    let adsFound: Array<{ 
+      advertiserName: string
+      landingUrl: string
+      adStatus: string
+      adText: string
+      adLibraryUrl: string
+    }> = []
     
-    try {
-      const resultText = searchData.result?.text || searchData.result?.json || JSON.stringify(searchData.result) || '[]'
-      const jsonMatch = resultText.match(/\[[\s\S]*\]/)
-      if (jsonMatch) {
-        adsFound = JSON.parse(jsonMatch[0])
-      }
-    } catch (parseError) {
-      console.error('Error parsing Meta Ads results:', parseError)
+    if (Array.isArray(apifyData) && apifyData.length > 0) {
+      adsFound = apifyData
+        .filter((ad: any) => ad.snapshot?.link_url && ad.is_active)
+        .map((ad: any) => ({
+          advertiserName: ad.page_name || ad.snapshot?.page_name || 'Desconocido',
+          landingUrl: ad.snapshot.link_url,
+          adStatus: ad.is_active ? 'active' : 'inactive',
+          adText: ad.snapshot?.body?.text || '',
+          adLibraryUrl: ad.ad_library_url || '',
+        }))
     }
+
+    console.log(`Found ${adsFound.length} ads with landing URLs`)
 
     if (adsFound.length === 0) {
       return NextResponse.json({
@@ -148,29 +123,24 @@ Si no encuentras anuncios relevantes, responde con un array vacío: []`,
       })
     }
 
-    // Filter out invalid URLs and limit to 8
-    const validAds = adsFound
-      .filter(ad => ad.landingUrl && (ad.landingUrl.startsWith('http://') || ad.landingUrl.startsWith('https://')))
-      .slice(0, 8)
+    // Remove duplicates by landing URL domain and limit to 8
+    const seenDomains = new Set<string>()
+    const uniqueAds = adsFound.filter(ad => {
+      try {
+        const domain = new URL(ad.landingUrl).hostname
+        if (seenDomains.has(domain)) return false
+        seenDomains.add(domain)
+        return true
+      } catch {
+        return false
+      }
+    }).slice(0, 8)
 
-    if (validAds.length === 0) {
-      return NextResponse.json({
-        success: true,
-        message: 'Se encontraron anuncios pero no se pudieron extraer las URLs de landing pages',
-        competitors: [],
-        stats: {
-          count: 0,
-          successCount: 0,
-          priceMin: null,
-          priceMax: null,
-          priceAvg: null,
-        }
-      })
-    }
+    console.log(`Processing ${uniqueAds.length} unique landing pages with rtrvr.ai`)
 
-    // Step 2: Scrape each landing page for pricing and offer details
+    // Step 2: Scrape each landing page for pricing using rtrvr.ai
     const results: CompetitorData[] = await Promise.all(
-      validAds.map(async (ad) => {
+      uniqueAds.map(async (ad) => {
         try {
           const response = await fetch(RTRVR_API_URL, {
             method: 'POST',
@@ -223,10 +193,11 @@ Responde SOLO con el JSON, sin explicaciones adicionales. Si no puedes encontrar
           }
 
           return {
-            adUrl: metaAdsUrl,
+            adUrl: ad.adLibraryUrl || metaAdsUrl,
             landingUrl: ad.landingUrl,
-            advertiserName: ad.advertiserName || 'Desconocido',
-            adStatus: ad.adStatus || 'active',
+            advertiserName: ad.advertiserName,
+            adStatus: ad.adStatus,
+            adText: ad.adText,
             price: parsedResult.price ? Number(parsedResult.price) : null,
             priceFormatted: parsedResult.priceFormatted || null,
             combo: parsedResult.combo || null,
@@ -238,10 +209,11 @@ Responde SOLO con el JSON, sin explicaciones adicionales. Si no puedes encontrar
         } catch (error: any) {
           console.error(`Error processing landing ${ad.landingUrl}:`, error)
           return {
-            adUrl: metaAdsUrl,
+            adUrl: ad.adLibraryUrl || metaAdsUrl,
             landingUrl: ad.landingUrl,
-            advertiserName: ad.advertiserName || 'Desconocido',
-            adStatus: ad.adStatus || 'active',
+            advertiserName: ad.advertiserName,
+            adStatus: ad.adStatus,
+            adText: ad.adText,
             price: null,
             priceFormatted: null,
             combo: null,
