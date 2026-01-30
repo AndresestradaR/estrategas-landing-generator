@@ -8,7 +8,6 @@ function buildPricingSection(request: GenerateImageRequest): string {
   const priceCombo2 = creativeControls?.priceCombo2
   const priceCombo3 = creativeControls?.priceCombo3
 
-  // Check if any price is provided
   const hasPricing = priceAfter || priceBefore || priceCombo2 || priceCombo3
 
   if (!hasPricing) {
@@ -37,77 +36,113 @@ function buildPrompt(request: GenerateImageRequest): string {
   const { productName, creativeControls } = request
   const targetCountry = creativeControls?.targetCountry || 'CO'
 
-  // Map country codes to names
   const countryNames: Record<string, string> = {
-    CO: 'Colombia',
-    MX: 'Mexico',
-    PA: 'Panama',
-    EC: 'Ecuador',
-    PE: 'Peru',
-    CL: 'Chile',
-    PY: 'Paraguay',
-    AR: 'Argentina',
-    GT: 'Guatemala',
-    ES: 'Espana',
+    CO: 'Colombia', MX: 'Mexico', PA: 'Panama', EC: 'Ecuador',
+    PE: 'Peru', CL: 'Chile', PY: 'Paraguay', AR: 'Argentina',
+    GT: 'Guatemala', ES: 'Espana',
   }
   const countryName = countryNames[targetCountry] || 'Colombia'
 
   const pricingSection = buildPricingSection(request)
 
-  return `Eres un disenador experto de banners e-commerce. Crea un banner profesional en ESPANOL.
+  const productDetails = creativeControls?.productDetails || ''
+  const salesAngle = creativeControls?.salesAngle || ''
+  const targetAvatar = creativeControls?.targetAvatar || ''
+  const additionalInstructions = creativeControls?.additionalInstructions || ''
 
-COMPOSICION (copia EXACTAMENTE del template - imagen 1):
-- Manten el MISMO layout, posiciones y estructura del template
-- Manten TODAS las personas/modelos en las MISMAS poses
-- Manten TODOS los elementos decorativos (splashes, frutas, efectos)
-- Manten badges de precio y secciones de oferta en mismas posiciones
-- Manten footer con sellos de confianza
+  return `Eres un director creativo experto en publicidad e-commerce para LATAM. Tu trabajo es crear banners que VENDEN.
 
-REEMPLAZO DE PRODUCTO (CRITICO):
-- Reemplaza TODAS las instancias del producto del template con el producto del usuario
-- El producto en la mano del modelo debe ser reemplazado
-- El producto hero grande debe ser reemplazado
-- Preserva el empaque, etiquetas y branding del producto del usuario EXACTAMENTE como se muestra en las imagenes 2+
+=== PASO 1: ANALISIS DEL PRODUCTO (PIENSA ANTES DE DISENAR) ===
 
-DATOS EXACTOS PARA EL BANNER (USA ESTOS VALORES, NO INVENTES):
-- Producto: ${productName}
-- Pais destino: ${countryName}
+Producto: ${productName}
+${productDetails ? `Detalles: ${productDetails}` : ''}
+${salesAngle ? `Angulo de venta: ${salesAngle}` : ''}
+
+Antes de disenar, ANALIZA:
+1. Que CATEGORIA es este producto? (cocina, fitness, belleza, tecnologia, hogar, salud, etc.)
+2. En que CONTEXTO se usa? (cocina, gimnasio, bano, oficina, exterior, etc.)
+3. Que ACCION realiza la persona al usarlo? (cocinar, ejercitar, aplicar, limpiar, etc.)
+4. Que EMOCION transmite el beneficio? (energia, tranquilidad, confianza, felicidad, etc.)
+
+=== PASO 2: DEFINIR LA PERSONA DEL BANNER ===
+
+${targetAvatar ? `AVATAR ESPECIFICADO POR EL CLIENTE: ${targetAvatar}` : 'Persona: adulto latinoamericano apropiado para el producto'}
+
+REGLA CRITICA: La persona del banner debe:
+- Coincidir con el avatar especificado (edad, genero, apariencia)
+- Estar en un AMBIENTE COHERENTE con el producto
+- Realizar una ACCION que tenga sentido con el producto
+- Transmitir la emocion del beneficio
+
+EJEMPLOS DE COHERENCIA:
+- Sarten de cocina -> Persona en COCINA, cocinando, con delantal
+- Suplemento fitness -> Persona atletica en GIMNASIO o entrenando
+- Crema facial -> Persona en BANO o ambiente spa, aplicandose crema
+- Aspiradora -> Persona en SALA/HOGAR, limpiando
+- Auriculares -> Persona relajada escuchando musica
+
+=== PASO 3: COMPOSICION DEL BANNER ===
+
+USA EL TEMPLATE (imagen 1) COMO REFERENCIA DE:
+- Estructura y layout general
+- Posicion de elementos (producto hero, badges de precio, beneficios)
+- Estilo tipografico y colores
+- Efectos visuales (splashes, brillos, decoraciones)
+
+PERO ADAPTA COMPLETAMENTE:
+- La PERSONA -> debe coincidir con el avatar y contexto del producto
+- El AMBIENTE/FONDO -> debe ser coherente con el uso del producto
+- La POSE/ACCION -> debe mostrar uso natural del producto
+- Los ELEMENTOS DECORATIVOS -> deben ser relevantes al producto
+
+=== PASO 4: CONTENIDO DEL BANNER ===
+
+PRODUCTO: ${productName}
+PAIS: ${countryName}
+
 ${pricingSection}
-${creativeControls?.productDetails ? `- Detalles: ${creativeControls.productDetails}` : ''}
 
-TEXTO (MUY IMPORTANTE):
-- TODO el texto debe estar en ESPANOL PERFECTO
-- Usa los PRECIOS EXACTOS que te di arriba - NO inventes precios
-- Usa fuentes GRANDES, BOLD, MUY LEGIBLES
-- El texto debe estar PERFECTAMENTE ESCRITO - sin letras al azar, sin errores
-- Copia el ESTILO de texto del template (tamano, posicion, colores)
-- Los titulares deben ser impactantes y orientados a ventas
+TEXTOS:
+- TODO en ESPANOL PERFECTO, sin errores
+- Fuentes GRANDES, BOLD, legibles
+- Headlines orientados a VENTA y BENEFICIO
+- Usa los precios EXACTOS proporcionados
 
-${creativeControls?.salesAngle ? `ANGULO DE VENTA: ${creativeControls.salesAngle}` : ''}
-${creativeControls?.targetAvatar ? `PUBLICO OBJETIVO: ${creativeControls.targetAvatar}` : ''}
-${creativeControls?.additionalInstructions ? `INSTRUCCIONES ESPECIALES: ${creativeControls.additionalInstructions}` : ''}
+=== PASO 5: ELEMENTOS OBLIGATORIOS ===
 
-PROHIBIDO:
-- NO remover ningun elemento del template
-- NO simplificar el diseno
-- NO cambiar el layout
-- NO generar texto con errores ortograficos
-- NO crear letras sin sentido o gibberish
-- NO inventar precios diferentes a los que te di
+1. PRODUCTO HERO: Grande, prominente, con el empaque/etiquetas EXACTOS de las imagenes del usuario
+2. PERSONA: Coherente con avatar + contexto + accion natural
+3. HEADLINE: Impactante, orientado a beneficios
+4. BENEFICIOS: 3-4 iconos con texto corto
+5. PRECIO: Badge destacado (si se proporciono)
+6. FOOTER: Sellos de confianza (envio gratis, garantia, etc.)
 
-RESULTADO: Banner IDENTICO al template, solo con producto reemplazado y textos/precios adaptados con los datos exactos proporcionados.`
+${additionalInstructions ? `=== INSTRUCCIONES ESPECIALES DEL CLIENTE ===\n${additionalInstructions}` : ''}
+
+=== PROHIBIDO ===
+- Persona en contexto incoherente (atleta con sarten, chef en gimnasio)
+- Texto con errores o letras random
+- Precios inventados
+- Ignorar el avatar especificado
+- Copiar LITERALMENTE la persona del template sin adaptar
+
+=== RESULTADO ESPERADO ===
+Banner profesional donde:
+- La persona coincide con el avatar del cliente
+- El contexto/ambiente es coherente con el producto
+- La accion de la persona tiene sentido
+- Se mantiene la calidad visual y estructura del template
+- Todo el texto esta perfecto en espanol`
 }
 
-// Check if modelId is a Gemini model (uses generateContent) or Imagen model (uses predict)
 function isGeminiModel(modelId: string): boolean {
   return modelId.startsWith('gemini-')
 }
 
-// Helper to create fetch with timeout
 async function fetchWithTimeout(
   url: string,
   options: RequestInit,
-  timeoutMs: number = 110000 // 110s default, leaving 10s buffer for Vercel's 120s limit
+  timeoutMs: number = 110000
 ): Promise<Response> {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
@@ -122,13 +157,12 @@ async function fetchWithTimeout(
   } catch (error: any) {
     clearTimeout(timeoutId)
     if (error.name === 'AbortError') {
-      throw new Error('La generación tardó demasiado. Intenta de nuevo o usa otro modelo.')
+      throw new Error('La generacion tardo demasiado. Intenta de nuevo o usa otro modelo.')
     }
     throw error
   }
 }
 
-// Generate with Gemini models (gemini-2.5-flash, gemini-3-pro-image-preview)
 async function generateWithGemini(
   request: GenerateImageRequest,
   apiKey: string,
@@ -138,7 +172,6 @@ async function generateWithGemini(
 
   const parts: any[] = []
 
-  // Add template first as reference (for landing generator)
   if (request.templateBase64 && request.templateMimeType) {
     parts.push({
       inline_data: {
@@ -148,7 +181,6 @@ async function generateWithGemini(
     })
   }
 
-  // Add reference/product images
   if (request.productImagesBase64) {
     for (const photo of request.productImagesBase64) {
       parts.push({
@@ -160,7 +192,6 @@ async function generateWithGemini(
     }
   }
 
-  // Use direct prompt if provided (Studio IA), otherwise build landing prompt
   const prompt = request.prompt && request.prompt.trim()
     ? request.prompt
     : buildPrompt(request)
@@ -184,7 +215,7 @@ async function generateWithGemini(
         },
       }),
     },
-    110000 // 110 seconds timeout
+    110000
   )
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
@@ -194,15 +225,14 @@ async function generateWithGemini(
     const errorText = await response.text()
     console.error(`[Gemini] API error: ${response.status} - ${errorText}`)
     
-    // Parse common Gemini errors
     if (response.status === 429) {
-      throw new Error('Límite de API excedido. Espera un momento e intenta de nuevo.')
+      throw new Error('Limite de API excedido. Espera un momento e intenta de nuevo.')
     }
     if (response.status === 400 && errorText.includes('SAFETY')) {
       throw new Error('La imagen fue bloqueada por filtros de seguridad. Modifica el prompt.')
     }
     if (response.status === 403) {
-      throw new Error('API key inválida o sin permisos para generación de imágenes.')
+      throw new Error('API key invalida o sin permisos para generacion de imagenes.')
     }
     
     throw new Error(`Error de Gemini: ${response.status}`)
@@ -210,7 +240,6 @@ async function generateWithGemini(
 
   const data = await response.json()
 
-  // Extract image from response
   for (const candidate of data.candidates || []) {
     for (const part of candidate.content?.parts || []) {
       if (part.inlineData?.data) {
@@ -225,7 +254,6 @@ async function generateWithGemini(
     }
   }
 
-  // Check for blocked content
   if (data.candidates?.[0]?.finishReason === 'SAFETY') {
     return {
       success: false,
@@ -237,12 +265,11 @@ async function generateWithGemini(
   console.error('[Gemini] No image in response:', JSON.stringify(data).substring(0, 500))
   return {
     success: false,
-    error: 'No se generó imagen. Intenta con otro prompt.',
+    error: 'No se genero imagen. Intenta con otro prompt.',
     provider: 'gemini',
   }
 }
 
-// Generate with Imagen models (imagen-3, imagen-4, etc.)
 async function generateWithImagen(
   request: GenerateImageRequest,
   apiKey: string,
@@ -250,21 +277,19 @@ async function generateWithImagen(
 ): Promise<GenerateImageResult> {
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${apiModelId}:predict`
 
-  // Use direct prompt if provided (Studio IA), otherwise build landing prompt
   const prompt = request.prompt && request.prompt.trim()
     ? request.prompt
     : buildPrompt(request)
 
-  // Map aspect ratio for Imagen
   const aspectRatioMap: Record<string, string> = {
     '1:1': '1:1',
     '16:9': '16:9',
     '9:16': '9:16',
     '4:3': '4:3',
     '3:4': '3:4',
-    '4:5': '4:3', // Closest match
-    '3:2': '16:9', // Closest match
-    '2:3': '9:16', // Closest match
+    '4:5': '4:3',
+    '3:2': '16:9',
+    '2:3': '9:16',
   }
 
   console.log(`[Imagen] Starting generation with model: ${apiModelId}`)
@@ -302,7 +327,6 @@ async function generateWithImagen(
 
   const data = await response.json()
 
-  // Extract image from response
   if (data.predictions && data.predictions.length > 0) {
     const prediction = data.predictions[0]
     if (prediction.bytesBase64Encoded) {
@@ -316,7 +340,6 @@ async function generateWithImagen(
     }
   }
 
-  // Alternative response format
   if (data.generatedImages && data.generatedImages.length > 0) {
     const image = data.generatedImages[0]
     if (image.image?.imageBytes) {
@@ -341,12 +364,10 @@ export const geminiProvider: ImageProvider = {
 
   async generate(request: GenerateImageRequest, apiKey: string): Promise<GenerateImageResult> {
     try {
-      // Get the API model ID from the selected model
       const apiModelId = request.modelId ? getApiModelId(request.modelId) : 'gemini-2.0-flash-exp-image-generation'
 
       console.log(`[Gemini Provider] Using model: ${request.modelId} -> API: ${apiModelId}`)
 
-      // Use different generation method based on model type
       if (isGeminiModel(request.modelId || 'gemini-2.5-flash')) {
         return await generateWithGemini(request, apiKey, apiModelId)
       } else {
@@ -356,7 +377,7 @@ export const geminiProvider: ImageProvider = {
       console.error('[Gemini Provider] Error:', error.message)
       return {
         success: false,
-        error: error.message || 'Error en la generación con Google',
+        error: error.message || 'Error en la generacion con Google',
         provider: 'gemini',
       }
     }
