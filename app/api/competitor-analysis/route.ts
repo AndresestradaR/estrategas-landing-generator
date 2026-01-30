@@ -59,6 +59,7 @@ export async function POST(request: Request) {
       'CL': 'Chile',
       'AR': 'Argentina',
       'GT': 'Guatemala',
+      'PY': 'Paraguay',
     }
 
     const countryName = countryMap[country] || 'Colombia'
