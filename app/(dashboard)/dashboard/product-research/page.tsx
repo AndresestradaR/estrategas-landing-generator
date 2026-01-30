@@ -5,14 +5,16 @@ import { ProductFilters } from '@/components/productos/ProductFilters'
 import { ProductTable } from '@/components/productos/ProductTable'
 import { CookieInput } from '@/components/productos/CookieInput'
 import { Product, ProductFilters as Filters } from '@/lib/dropkiller/types'
-import { Target, AlertCircle, Search, Users, TrendingUp, DollarSign, ExternalLink, Loader2, CheckCircle, XCircle, BarChart3, Calculator, Truck, Package, Megaphone, PiggyBank, Flame, Sparkles, TrendingDown, Link2, Settings } from 'lucide-react'
+import { Target, AlertCircle, Search, Users, TrendingUp, DollarSign, ExternalLink, Loader2, CheckCircle, XCircle, BarChart3, Calculator, Truck, Package, Megaphone, PiggyBank, Flame, Sparkles, TrendingDown, Settings, Gift, Tag } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Link from 'next/link'
 
 type TabType = 'search' | 'competitor'
 
 interface CompetitorResult {
-  url: string
+  adUrl: string
+  landingUrl: string
+  advertiserName: string
   price: number | null
   priceFormatted: string | null
   combo: string | null
@@ -20,6 +22,7 @@ interface CompetitorResult {
   angle: string | null
   headline: string | null
   cta: string | null
+  adStatus: string
   error?: string
 }
 
@@ -29,6 +32,8 @@ interface AnalysisStats {
   priceMin: number | null
   priceMax: number | null
   priceAvg: number | null
+  withGift: number
+  withCombo: number
 }
 
 export default function ProductResearchPage() {
@@ -39,17 +44,19 @@ export default function ProductResearchPage() {
   const [error, setError] = useState<string | null>(null)
   
   // State para análisis de competencia
-  const [landingUrls, setLandingUrls] = useState('')
+  const [competitorKeyword, setCompetitorKeyword] = useState('')
+  const [competitorCountry, setCompetitorCountry] = useState('CO')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [analysisResults, setAnalysisResults] = useState<CompetitorResult[] | null>(null)
   const [analysisStats, setAnalysisStats] = useState<AnalysisStats | null>(null)
   const [analysisError, setAnalysisError] = useState<string | null>(null)
+  const [analysisStep, setAnalysisStep] = useState(0)
 
   // State para calculadora de márgenes
   const [costProduct, setCostProduct] = useState<number | ''>('')
   const [costShipping, setCostShipping] = useState<number | ''>('')
   const [costCPA, setCostCPA] = useState<number | ''>('')
-  const [effectiveRate, setEffectiveRate] = useState<number>(65) // % de efectividad
+  const [effectiveRate, setEffectiveRate] = useState<number>(65)
 
   const handleSearch = async (filters: Filters) => {
     if (!cookies) {
@@ -91,18 +98,8 @@ export default function ProductResearchPage() {
 
   // Análisis de competencia REAL con rtrvr.ai
   const handleAnalyzeCompetitors = async () => {
-    const urls = landingUrls
-      .split('\n')
-      .map(url => url.trim())
-      .filter(url => url.length > 0 && (url.startsWith('http://') || url.startsWith('https://')))
-
-    if (urls.length === 0) {
-      toast.error('Ingresa al menos una URL válida de landing page')
-      return
-    }
-
-    if (urls.length > 10) {
-      toast.error('Máximo 10 URLs por análisis')
+    if (!competitorKeyword.trim() || competitorKeyword.trim().length < 2) {
+      toast.error('Ingresa una palabra clave (mínimo 2 caracteres)')
       return
     }
 
@@ -110,13 +107,25 @@ export default function ProductResearchPage() {
     setAnalysisResults(null)
     setAnalysisStats(null)
     setAnalysisError(null)
+    setAnalysisStep(1)
 
     try {
+      // Simular progreso mientras espera
+      const progressInterval = setInterval(() => {
+        setAnalysisStep(prev => prev < 4 ? prev + 1 : prev)
+      }, 3000)
+
       const response = await fetch('/api/competitor-analysis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ urls }),
+        body: JSON.stringify({ 
+          keyword: competitorKeyword.trim(),
+          country: competitorCountry 
+        }),
       })
+
+      clearInterval(progressInterval)
+      setAnalysisStep(5)
 
       const data = await response.json()
 
@@ -124,17 +133,31 @@ export default function ProductResearchPage() {
         throw new Error(data.error || 'Error al analizar competencia')
       }
 
-      setAnalysisResults(data.competitors)
-      setAnalysisStats(data.stats)
-      toast.success(`Se analizaron ${data.stats.successCount} de ${data.stats.count} landing pages`)
+      if (data.competitors.length === 0) {
+        toast('No se encontraron competidores activos para esta keyword', { icon: '🔍' })
+      } else {
+        setAnalysisResults(data.competitors)
+        setAnalysisStats(data.stats)
+        toast.success(`Se encontraron ${data.stats.count} competidores, ${data.stats.successCount} con precios`)
+      }
     } catch (err: any) {
       const message = err.message || 'Error desconocido'
       setAnalysisError(message)
       toast.error(message)
     } finally {
       setIsAnalyzing(false)
+      setAnalysisStep(0)
     }
   }
+
+  // Pasos del análisis
+  const analysisSteps = [
+    { step: 1, label: 'Buscando anuncios en Meta Ads Library...' },
+    { step: 2, label: 'Identificando tiendas activas...' },
+    { step: 3, label: 'Extrayendo landing pages...' },
+    { step: 4, label: 'Analizando precios y ofertas...' },
+    { step: 5, label: '¡Listo!' },
+  ]
 
   // Cálculos de margen
   const marginCalc = useMemo(() => {
@@ -148,22 +171,17 @@ export default function ProductResearchPage() {
     const totalCost = Number(costProduct) + Number(costShipping)
     const totalCostWithCPA = totalCost + Number(costCPA)
     
-    // Margen si vendemos al precio mínimo de competencia
     const marginAtMinPrice = minCompetitorPrice - totalCostWithCPA
     const marginPercentAtMin = ((marginAtMinPrice / minCompetitorPrice) * 100)
     
-    // Margen si vendemos al precio promedio
     const marginAtAvgPrice = avgCompetitorPrice - totalCostWithCPA
     const marginPercentAtAvg = ((marginAtAvgPrice / avgCompetitorPrice) * 100)
     
-    // Margen REAL considerando efectividad (devoluciones)
     const realMarginAtMin = marginAtMinPrice * (effectiveRate / 100) - (totalCost * ((100 - effectiveRate) / 100))
     const realMarginAtAvg = marginAtAvgPrice * (effectiveRate / 100) - (totalCost * ((100 - effectiveRate) / 100))
     
-    // Precio mínimo viable (para tener al menos 20% de margen real)
     const minViablePrice = Math.ceil((totalCostWithCPA / (1 - 0.20)) / 100) * 100
     
-    // Veredicto con mensajes más cercanos
     let verdict: 'go' | 'maybe' | 'nogo' = 'nogo'
     let verdictTitle = ''
     let verdictText = ''
@@ -249,13 +267,8 @@ export default function ProductResearchPage() {
       {/* Tab Content: Buscar Productos */}
       {activeTab === 'search' && (
         <>
-          {/* Cookie Input */}
           <CookieInput onCookiesChange={setCookies} />
-
-          {/* Filters */}
           <ProductFilters onSearch={handleSearch} isLoading={isLoading} />
-
-          {/* Error Alert */}
           {error && (
             <div className="bg-error/10 border border-error/30 rounded-xl p-4 flex items-start gap-3">
               <AlertCircle className="w-5 h-5 text-error flex-shrink-0 mt-0.5" />
@@ -265,11 +278,7 @@ export default function ProductResearchPage() {
               </div>
             </div>
           )}
-
-          {/* Results Table */}
           <ProductTable products={products} isLoading={isLoading} />
-
-          {/* Info Footer */}
           <div className="text-center text-sm text-text-secondary/70 py-4">
             <p>Los datos provienen de DropKiller. Necesitas una suscripción activa para usar esta herramienta.</p>
           </div>
@@ -287,27 +296,46 @@ export default function ProductResearchPage() {
             </div>
             
             <p className="text-text-secondary text-sm">
-              Pega las URLs de las landing pages de tu competencia (una por línea). Extraeremos precios, combos, regalos y ángulos de venta.
+              Escribe el nombre del producto y automáticamente buscaremos quién lo está vendiendo en Meta Ads, 
+              extraeremos sus landing pages y analizaremos precios, combos y ofertas.
             </p>
 
-            {/* URLs Input */}
-            <div>
-              <label className="flex items-center gap-2 text-sm font-medium text-text-secondary mb-2">
-                <Link2 className="w-4 h-4" />
-                URLs de Landing Pages (máx. 10)
-              </label>
-              <textarea
-                value={landingUrls}
-                onChange={(e) => setLandingUrls(e.target.value)}
-                placeholder={`https://tiendaejemplo1.com/producto
-https://ofertascolombia.co/sarten
-https://megapromos.shop/producto-ganador`}
-                rows={5}
-                className="w-full px-4 py-3 bg-background border border-border rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/50 font-mono text-sm resize-none"
-              />
-              <p className="text-xs text-text-secondary mt-1">
-                💡 Tip: Busca en Meta Ads Library con keywords de tu producto y copia las URLs de las landing pages
-              </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Keyword */}
+              <div className="md:col-span-2">
+                <label className="flex items-center gap-2 text-sm font-medium text-text-secondary mb-2">
+                  <Search className="w-4 h-4" />
+                  Producto a buscar
+                </label>
+                <input
+                  type="text"
+                  value={competitorKeyword}
+                  onChange={(e) => setCompetitorKeyword(e.target.value)}
+                  placeholder="Ej: sartén antiadherente, faja colombiana, serum vitamina c"
+                  className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/50"
+                  onKeyDown={(e) => e.key === 'Enter' && handleAnalyzeCompetitors()}
+                />
+              </div>
+
+              {/* Country */}
+              <div>
+                <label className="block text-sm font-medium text-text-secondary mb-2">
+                  País
+                </label>
+                <select
+                  value={competitorCountry}
+                  onChange={(e) => setCompetitorCountry(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-background border border-border rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/50"
+                >
+                  <option value="CO">🇨🇴 Colombia</option>
+                  <option value="MX">🇲🇽 México</option>
+                  <option value="PE">🇵🇪 Perú</option>
+                  <option value="EC">🇪🇨 Ecuador</option>
+                  <option value="CL">🇨🇱 Chile</option>
+                  <option value="AR">🇦🇷 Argentina</option>
+                  <option value="GT">🇬🇹 Guatemala</option>
+                </select>
+              </div>
             </div>
 
             <div className="flex items-center gap-4">
@@ -324,7 +352,7 @@ https://megapromos.shop/producto-ganador`}
                 ) : (
                   <>
                     <Search className="w-5 h-5" />
-                    Analizar Landing Pages
+                    Buscar Competidores
                   </>
                 )}
               </button>
@@ -337,6 +365,10 @@ https://megapromos.shop/producto-ganador`}
                 Configurar API Key
               </Link>
             </div>
+
+            <p className="text-xs text-text-secondary/70">
+              💡 Usa keywords específicas para mejores resultados. Ej: &quot;sartén cerámica&quot; en vez de solo &quot;sartén&quot;
+            </p>
           </div>
 
           {/* Error Alert */}
@@ -362,13 +394,28 @@ https://megapromos.shop/producto-ganador`}
           {/* Analysis Progress */}
           {isAnalyzing && (
             <div className="bg-surface rounded-xl border border-border p-6">
-              <div className="flex items-center gap-3">
-                <Loader2 className="w-6 h-6 text-accent animate-spin" />
-                <div>
-                  <h3 className="text-lg font-semibold text-text-primary">Analizando landing pages...</h3>
-                  <p className="text-sm text-text-secondary">Esto puede tomar unos segundos por cada URL</p>
-                </div>
+              <h3 className="text-lg font-semibold text-text-primary mb-4">
+                Buscando competidores para &quot;{competitorKeyword}&quot;...
+              </h3>
+              <div className="space-y-3">
+                {analysisSteps.slice(0, -1).map((step) => (
+                  <div key={step.step} className="flex items-center gap-3">
+                    {analysisStep > step.step ? (
+                      <CheckCircle className="w-5 h-5 text-green-500" />
+                    ) : analysisStep === step.step ? (
+                      <Loader2 className="w-5 h-5 text-accent animate-spin" />
+                    ) : (
+                      <div className="w-5 h-5 rounded-full border-2 border-border" />
+                    )}
+                    <span className={analysisStep >= step.step ? 'text-text-primary' : 'text-text-secondary'}>
+                      {step.label}
+                    </span>
+                  </div>
+                ))}
               </div>
+              <p className="text-sm text-text-secondary mt-4">
+                ⏱️ Esto puede tomar 30-60 segundos dependiendo de cuántos anuncios encuentre
+              </p>
             </div>
           )}
 
@@ -376,11 +423,11 @@ https://megapromos.shop/producto-ganador`}
           {analysisResults && analysisStats && (
             <>
               {/* Summary Cards */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
                 <div className="bg-surface rounded-xl border border-border p-4">
                   <div className="flex items-center gap-2 text-text-secondary mb-1">
                     <Users className="w-4 h-4" />
-                    <span className="text-sm">Analizados</span>
+                    <span className="text-sm">Competidores</span>
                   </div>
                   <p className="text-2xl font-bold text-text-primary">
                     {analysisStats.successCount}/{analysisStats.count}
@@ -391,7 +438,7 @@ https://megapromos.shop/producto-ganador`}
                   <div className="bg-surface rounded-xl border border-border p-4">
                     <div className="flex items-center gap-2 text-text-secondary mb-1">
                       <DollarSign className="w-4 h-4" />
-                      <span className="text-sm">Precio Mínimo</span>
+                      <span className="text-sm">Mínimo</span>
                     </div>
                     <p className="text-2xl font-bold text-green-500">${analysisStats.priceMin.toLocaleString()}</p>
                   </div>
@@ -401,7 +448,7 @@ https://megapromos.shop/producto-ganador`}
                   <div className="bg-surface rounded-xl border border-border p-4">
                     <div className="flex items-center gap-2 text-text-secondary mb-1">
                       <TrendingUp className="w-4 h-4" />
-                      <span className="text-sm">Precio Promedio</span>
+                      <span className="text-sm">Promedio</span>
                     </div>
                     <p className="text-2xl font-bold text-accent">${analysisStats.priceAvg.toLocaleString()}</p>
                   </div>
@@ -411,11 +458,27 @@ https://megapromos.shop/producto-ganador`}
                   <div className="bg-surface rounded-xl border border-border p-4">
                     <div className="flex items-center gap-2 text-text-secondary mb-1">
                       <DollarSign className="w-4 h-4" />
-                      <span className="text-sm">Precio Máximo</span>
+                      <span className="text-sm">Máximo</span>
                     </div>
                     <p className="text-2xl font-bold text-orange-500">${analysisStats.priceMax.toLocaleString()}</p>
                   </div>
                 )}
+
+                <div className="bg-surface rounded-xl border border-border p-4">
+                  <div className="flex items-center gap-2 text-text-secondary mb-1">
+                    <Gift className="w-4 h-4" />
+                    <span className="text-sm">Con Regalo</span>
+                  </div>
+                  <p className="text-2xl font-bold text-purple-500">{analysisStats.withGift}</p>
+                </div>
+
+                <div className="bg-surface rounded-xl border border-border p-4">
+                  <div className="flex items-center gap-2 text-text-secondary mb-1">
+                    <Tag className="w-4 h-4" />
+                    <span className="text-sm">Con Combo</span>
+                  </div>
+                  <p className="text-2xl font-bold text-blue-500">{analysisStats.withCombo}</p>
+                </div>
               </div>
 
               {/* Competitors Table */}
@@ -427,7 +490,7 @@ https://megapromos.shop/producto-ganador`}
                   <table className="w-full">
                     <thead className="bg-background">
                       <tr>
-                        <th className="px-4 py-3 text-left text-sm font-medium text-text-secondary">Landing Page</th>
+                        <th className="px-4 py-3 text-left text-sm font-medium text-text-secondary">Tienda</th>
                         <th className="px-4 py-3 text-right text-sm font-medium text-text-secondary">Precio</th>
                         <th className="px-4 py-3 text-left text-sm font-medium text-text-secondary">Combo/Oferta</th>
                         <th className="px-4 py-3 text-left text-sm font-medium text-text-secondary">Regalo</th>
@@ -439,28 +502,25 @@ https://megapromos.shop/producto-ganador`}
                       {analysisResults.map((competitor, index) => (
                         <tr key={index} className="hover:bg-background/50 transition-colors">
                           <td className="px-4 py-3">
-                            {competitor.error ? (
-                              <span className="text-red-500 text-sm flex items-center gap-1">
-                                <XCircle className="w-4 h-4" />
-                                Error
-                              </span>
-                            ) : (
-                              <a 
-                                href={competitor.url} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="text-accent hover:underline flex items-center gap-1 text-sm"
-                              >
-                                {(() => {
-                                  try {
-                                    return new URL(competitor.url).hostname
-                                  } catch {
-                                    return competitor.url.slice(0, 30)
-                                  }
-                                })()}
-                                <ExternalLink className="w-3 h-3" />
-                              </a>
-                            )}
+                            <div className="space-y-1">
+                              <p className="font-medium text-text-primary text-sm">{competitor.advertiserName}</p>
+                              {competitor.error ? (
+                                <span className="text-red-500 text-xs flex items-center gap-1">
+                                  <XCircle className="w-3 h-3" />
+                                  Error al analizar
+                                </span>
+                              ) : (
+                                <a 
+                                  href={competitor.landingUrl} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="text-accent hover:underline flex items-center gap-1 text-xs"
+                                >
+                                  Ver landing
+                                  <ExternalLink className="w-3 h-3" />
+                                </a>
+                              )}
+                            </div>
                           </td>
                           <td className="px-4 py-3 text-right">
                             {competitor.price ? (
@@ -468,13 +528,14 @@ https://megapromos.shop/producto-ganador`}
                                 {competitor.priceFormatted || `$${competitor.price.toLocaleString()}`}
                               </span>
                             ) : (
-                              <span className="text-text-secondary">-</span>
+                              <span className="text-text-secondary text-sm">No encontrado</span>
                             )}
                           </td>
                           <td className="px-4 py-3 text-left text-sm">
                             {competitor.combo ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-1 bg-accent/10 text-accent rounded-full text-xs">
-                                {competitor.combo}
+                              <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-500/10 text-blue-500 rounded-full text-xs">
+                                <Tag className="w-3 h-3" />
+                                {competitor.combo.length > 25 ? competitor.combo.slice(0, 25) + '...' : competitor.combo}
                               </span>
                             ) : (
                               <span className="text-text-secondary">-</span>
@@ -483,8 +544,8 @@ https://megapromos.shop/producto-ganador`}
                           <td className="px-4 py-3 text-left text-sm">
                             {competitor.gift ? (
                               <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-500/10 text-green-500 rounded-full text-xs">
-                                <CheckCircle className="w-3 h-3" />
-                                {competitor.gift.length > 30 ? competitor.gift.slice(0, 30) + '...' : competitor.gift}
+                                <Gift className="w-3 h-3" />
+                                {competitor.gift.length > 25 ? competitor.gift.slice(0, 25) + '...' : competitor.gift}
                               </span>
                             ) : (
                               <span className="text-text-secondary">-</span>
@@ -495,7 +556,7 @@ https://megapromos.shop/producto-ganador`}
                           </td>
                           <td className="px-4 py-3 text-left text-sm">
                             {competitor.cta ? (
-                              <span className="text-accent">{competitor.cta}</span>
+                              <span className="text-accent font-medium">{competitor.cta}</span>
                             ) : (
                               <span className="text-text-secondary">-</span>
                             )}
@@ -520,7 +581,6 @@ https://megapromos.shop/producto-ganador`}
                   </p>
 
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                    {/* Costo Producto */}
                     <div>
                       <label className="flex items-center gap-2 text-sm font-medium text-text-secondary mb-2">
                         <Package className="w-4 h-4" />
@@ -538,7 +598,6 @@ https://megapromos.shop/producto-ganador`}
                       </div>
                     </div>
 
-                    {/* Costo Envío */}
                     <div>
                       <label className="flex items-center gap-2 text-sm font-medium text-text-secondary mb-2">
                         <Truck className="w-4 h-4" />
@@ -556,7 +615,6 @@ https://megapromos.shop/producto-ganador`}
                       </div>
                     </div>
 
-                    {/* CPA */}
                     <div>
                       <label className="flex items-center gap-2 text-sm font-medium text-text-secondary mb-2">
                         <Megaphone className="w-4 h-4" />
@@ -574,7 +632,6 @@ https://megapromos.shop/producto-ganador`}
                       </div>
                     </div>
 
-                    {/* Efectividad */}
                     <div>
                       <label className="flex items-center gap-2 text-sm font-medium text-text-secondary mb-2">
                         <PiggyBank className="w-4 h-4" />
@@ -595,10 +652,8 @@ https://megapromos.shop/producto-ganador`}
                     </div>
                   </div>
 
-                  {/* Resultados de la calculadora */}
                   {marginCalc && (
                     <div className="space-y-4">
-                      {/* Desglose de costos */}
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 p-4 bg-background rounded-lg">
                         <div>
                           <p className="text-xs text-text-secondary mb-1">Costo Total (Producto + Flete)</p>
@@ -614,9 +669,7 @@ https://megapromos.shop/producto-ganador`}
                         </div>
                       </div>
 
-                      {/* Comparación con competencia */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* Al precio mínimo */}
                         <div className={`p-4 rounded-lg border ${marginCalc.realMarginAtMin >= 15000 ? 'bg-green-500/5 border-green-500/30' : marginCalc.realMarginAtMin >= 0 ? 'bg-yellow-500/5 border-yellow-500/30' : 'bg-red-500/5 border-red-500/30'}`}>
                           <p className="text-sm text-text-secondary mb-2">Si te toca pelear al precio mínimo (${analysisStats.priceMin?.toLocaleString()})</p>
                           <div className="flex items-end justify-between">
@@ -636,7 +689,6 @@ https://megapromos.shop/producto-ganador`}
                           </div>
                         </div>
 
-                        {/* Al precio promedio */}
                         <div className={`p-4 rounded-lg border ${marginCalc.realMarginAtAvg >= 15000 ? 'bg-green-500/5 border-green-500/30' : marginCalc.realMarginAtAvg >= 0 ? 'bg-yellow-500/5 border-yellow-500/30' : 'bg-red-500/5 border-red-500/30'}`}>
                           <p className="text-sm text-text-secondary mb-2">Si vendes al precio promedio (${analysisStats.priceAvg?.toLocaleString()})</p>
                           <div className="flex items-end justify-between">
@@ -657,7 +709,6 @@ https://megapromos.shop/producto-ganador`}
                         </div>
                       </div>
 
-                      {/* Veredicto Final */}
                       <div className={`p-6 rounded-xl border ${
                         marginCalc.verdict === 'go' 
                           ? 'bg-gradient-to-r from-green-500/10 to-accent/10 border-green-500/30' 
@@ -703,7 +754,6 @@ https://megapromos.shop/producto-ganador`}
                     </div>
                   )}
 
-                  {/* Empty state para calculadora */}
                   {!marginCalc && (
                     <div className="text-center py-6 text-text-secondary">
                       <Calculator className="w-8 h-8 mx-auto mb-2 opacity-50" />
@@ -713,9 +763,8 @@ https://megapromos.shop/producto-ganador`}
                 </div>
               )}
 
-              {/* Footer Note */}
               <div className="text-center text-sm text-text-secondary/70 py-4">
-                <p>Los datos se extraen usando rtrvr.ai (~$0.12 por landing page analizada)</p>
+                <p>Los datos se extraen usando rtrvr.ai (~$0.12 por búsqueda + ~$0.12 por cada landing page analizada)</p>
               </div>
             </>
           )}
@@ -727,26 +776,29 @@ https://megapromos.shop/producto-ganador`}
                 <Users className="w-8 h-8 text-accent" />
               </div>
               <h3 className="text-lg font-semibold text-text-primary mb-2">
-                Analiza tu competencia
+                Espía a tu competencia automáticamente
               </h3>
               <p className="text-text-secondary max-w-md mx-auto mb-4">
-                Pega las URLs de las landing pages de tu competencia. Extraeremos precios, combos, regalos y ángulos de venta automáticamente.
+                Escribe el nombre del producto (ej: &quot;sartén antiadherente&quot;) y automáticamente:
               </p>
-              <div className="text-sm text-text-secondary/70">
-                <p>💡 ¿Cómo encontrar landing pages?</p>
-                <p className="mt-1">
-                  Busca en{' '}
-                  <a 
-                    href="https://www.facebook.com/ads/library" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-accent hover:underline"
-                  >
-                    Meta Ads Library
-                  </a>
-                  {' '}con keywords de tu producto
-                </p>
-              </div>
+              <ol className="text-left max-w-sm mx-auto text-sm text-text-secondary space-y-2">
+                <li className="flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-accent/20 text-accent flex items-center justify-center text-xs font-bold">1</span>
+                  Buscamos en Meta Ads Library quién lo vende
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-accent/20 text-accent flex items-center justify-center text-xs font-bold">2</span>
+                  Entramos a cada landing page
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-accent/20 text-accent flex items-center justify-center text-xs font-bold">3</span>
+                  Extraemos precios, combos, regalos y ángulos
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-accent/20 text-accent flex items-center justify-center text-xs font-bold">4</span>
+                  Te decimos si el margen da o no da
+                </li>
+              </ol>
             </div>
           )}
         </div>
