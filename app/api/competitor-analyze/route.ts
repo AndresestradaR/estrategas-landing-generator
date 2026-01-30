@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { decrypt } from '@/lib/services/encryption'
 
-const RTRVR_API_URL = 'https://api.rtrvr.ai/execute'
+// Firecrawl API - más confiable para ecommerce
+const FIRECRAWL_API_URL = 'https://api.firecrawl.dev/v1/scrape'
 
 interface AdToAnalyze {
   id: string
@@ -31,26 +32,115 @@ interface AnalyzedCompetitor {
   debug?: string
 }
 
-// Helper to extract price from various formats
-function extractPrice(priceValue: any): number | null {
-  if (priceValue === null || priceValue === undefined) return null
+// Helper to extract price from text using regex
+function extractPriceFromText(text: string): { price: number | null, priceFormatted: string | null } {
+  if (!text) return { price: null, priceFormatted: null }
   
-  // If already a number
-  if (typeof priceValue === 'number') return priceValue
+  // Pattern for Colombian/LATAM prices: $89.900, $149,900, COP 89900, etc.
+  const patterns = [
+    /\$\s*(\d{1,3}(?:[.,]\d{3})*)/g,  // $89.900 or $89,900
+    /COP\s*(\d{1,3}(?:[.,]\d{3})*)/gi, // COP 89900
+    /(\d{1,3}(?:[.,]\d{3})*)\s*(?:COP|pesos)/gi, // 89.900 COP
+  ]
   
-  // If string, try to extract number
-  if (typeof priceValue === 'string') {
-    // Remove currency symbols, dots as thousands separator, keep comma as decimal
-    const cleaned = priceValue
-      .replace(/[^\d.,]/g, '') // Remove non-numeric except . and ,
-      .replace(/\.(?=\d{3})/g, '') // Remove dots used as thousands separator
-      .replace(',', '.') // Replace comma with dot for decimal
-    
-    const num = parseFloat(cleaned)
-    if (!isNaN(num) && num > 0) return Math.round(num)
+  const prices: number[] = []
+  const formattedPrices: string[] = []
+  
+  for (const pattern of patterns) {
+    let match
+    while ((match = pattern.exec(text)) !== null) {
+      const fullMatch = match[0]
+      const numPart = match[1]
+      
+      // Convert to number: remove dots/commas used as thousands separator
+      const cleaned = numPart.replace(/[.,]/g, '')
+      const num = parseInt(cleaned, 10)
+      
+      // Valid price range for LATAM ecommerce (1,000 to 10,000,000)
+      if (num >= 1000 && num <= 10000000) {
+        prices.push(num)
+        formattedPrices.push(fullMatch)
+      }
+    }
   }
   
-  return null
+  if (prices.length === 0) return { price: null, priceFormatted: null }
+  
+  // Return the most common price or the first one found
+  // Usually the sale price appears first or most frequently
+  const priceIndex = 0 // Take first price found (usually the sale price)
+  return { 
+    price: prices[priceIndex], 
+    priceFormatted: formattedPrices[priceIndex] 
+  }
+}
+
+// Extract info from markdown content
+function extractInfoFromMarkdown(markdown: string): Partial<AnalyzedCompetitor> {
+  const result: Partial<AnalyzedCompetitor> = {}
+  
+  // Extract price
+  const priceInfo = extractPriceFromText(markdown)
+  result.price = priceInfo.price
+  result.priceFormatted = priceInfo.priceFormatted
+  
+  // Look for common ecommerce patterns
+  const lowerMarkdown = markdown.toLowerCase()
+  
+  // Gift/shipping patterns
+  const giftPatterns = [
+    /env[ií]o\s*gratis/gi,
+    /free\s*shipping/gi,
+    /regalo\s*(?:sorpresa|incluido|gratis)/gi,
+    /garant[ií]a\s*(?:de\s*)?\d+\s*(?:d[ií]as|meses|a[ñn]os)/gi,
+    /devoluci[oó]n\s*gratis/gi,
+  ]
+  
+  const gifts: string[] = []
+  for (const pattern of giftPatterns) {
+    const match = markdown.match(pattern)
+    if (match) gifts.push(match[0])
+  }
+  result.gift = gifts.length > 0 ? gifts.join(', ') : null
+  
+  // Combo patterns
+  const comboPatterns = [
+    /\d+\s*x\s*\d+/gi, // 2x1, 3x2
+    /kit\s*(?:de\s*)?\d+/gi, // Kit de 3
+    /pack\s*(?:de\s*)?\d+/gi, // Pack de 2
+    /combo\s*(?:de\s*)?\d+/gi, // Combo de 3
+    /paquete\s*(?:familiar|completo)/gi,
+  ]
+  
+  for (const pattern of comboPatterns) {
+    const match = markdown.match(pattern)
+    if (match) {
+      result.combo = match[0]
+      break
+    }
+  }
+  
+  // Try to extract headline (first H1 or strong text)
+  const h1Match = markdown.match(/^#\s+(.+)$/m)
+  if (h1Match) result.headline = h1Match[1].substring(0, 100)
+  
+  // CTA patterns
+  const ctaPatterns = [
+    /(?:comprar|buy)\s*(?:ahora|now)/gi,
+    /(?:agregar|add)\s*(?:al\s*carrito|to\s*cart)/gi,
+    /(?:hacer|realizar)\s*pedido/gi,
+    /(?:obtener|get)\s*(?:oferta|offer)/gi,
+  ]
+  
+  for (const pattern of ctaPatterns) {
+    const match = markdown.match(pattern)
+    if (match) {
+      result.cta = match[0]
+      break
+    }
+  }
+  
+  return result
 }
 
 export async function POST(request: Request) {
@@ -62,7 +152,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    // Get user's rtrvr API key
+    // Get user's Firecrawl API key (stored in same field as rtrvr for now)
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('rtrvr_api_key')
@@ -71,11 +161,11 @@ export async function POST(request: Request) {
 
     if (profileError || !profile?.rtrvr_api_key) {
       return NextResponse.json({ 
-        error: 'API key de rtrvr.ai no configurada. Ve a Configuración para agregarla.' 
+        error: 'API key no configurada. Ve a Configuración para agregarla.' 
       }, { status: 400 })
     }
 
-    const rtrvrApiKey = decrypt(profile.rtrvr_api_key)
+    const apiKey = decrypt(profile.rtrvr_api_key)
     
     const body = await request.json()
     const { ads } = body as { ads: AdToAnalyze[] }
@@ -88,7 +178,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Máximo 10 competidores por análisis' }, { status: 400 })
     }
 
-    console.log(`Analyzing ${ads.length} competitors with rtrvr.ai`)
+    console.log(`Analyzing ${ads.length} competitors with Firecrawl`)
 
     // Analyze each landing page in parallel
     const results: AnalyzedCompetitor[] = await Promise.all(
@@ -97,110 +187,54 @@ export async function POST(request: Request) {
         
         try {
           const controller = new AbortController()
-          const timeoutId = setTimeout(() => controller.abort(), 60000)
+          const timeoutId = setTimeout(() => controller.abort(), 45000)
 
-          const requestBody = {
-            input: `Extrae información de esta página de ecommerce y responde SOLO con JSON válido:
+          debugInfo += `URL: ${ad.landingUrl} | `
 
-{
-  "price": 89900,
-  "priceFormatted": "$89.900",
-  "combo": null,
-  "gift": "Envío gratis",
-  "angle": "Controla el azúcar naturalmente",
-  "headline": "Berberina 1500",
-  "cta": "Comprar ahora"
-}
-
-INSTRUCCIONES:
-- price: número sin puntos ni símbolos (89.900 → 89900)
-- priceFormatted: precio exacto como aparece
-- Busca el precio de VENTA (grande, destacado), no el tachado
-- Si no encuentras algo, usa null
-
-Responde SOLO el JSON:`,
-            urls: [ad.landingUrl],
-            response: {
-              verbosity: 'final',
-              inlineOutputMaxBytes: 50000
-            }
-          }
-
-          debugInfo += `Request: ${JSON.stringify(requestBody).substring(0, 200)}... | `
-
-          const response = await fetch(RTRVR_API_URL, {
+          const response = await fetch(FIRECRAWL_API_URL, {
             method: 'POST',
             headers: {
-              'Authorization': `Bearer ${rtrvrApiKey}`,
+              'Authorization': `Bearer ${apiKey}`,
               'Content-Type': 'application/json',
             },
             signal: controller.signal,
-            body: JSON.stringify(requestBody),
+            body: JSON.stringify({
+              url: ad.landingUrl,
+              formats: ['markdown'],
+              onlyMainContent: true,
+              waitFor: 3000, // Wait 3s for JS to render
+            }),
           })
 
           clearTimeout(timeoutId)
 
           const responseText = await response.text()
-          debugInfo += `Status: ${response.status} | Response: ${responseText.substring(0, 500)}`
+          debugInfo += `Status: ${response.status} | `
 
           if (!response.ok) {
-            console.error(`rtrvr.ai error for ${ad.landingUrl}:`, response.status, responseText)
-            throw new Error(`HTTP ${response.status}: ${responseText.substring(0, 100)}`)
+            // If Firecrawl fails, try with rtrvr.ai as fallback
+            debugInfo += `Firecrawl error: ${responseText.substring(0, 200)}`
+            console.error(`Firecrawl error for ${ad.landingUrl}:`, response.status, responseText.substring(0, 500))
+            throw new Error(`API error: ${response.status}`)
           }
 
           let data: any
           try {
             data = JSON.parse(responseText)
           } catch {
-            throw new Error(`Invalid JSON response: ${responseText.substring(0, 100)}`)
-          }
-          
-          console.log(`rtrvr.ai raw response for ${ad.advertiserName}:`, JSON.stringify(data).substring(0, 1000))
-          
-          let parsedResult: Partial<AnalyzedCompetitor> = {}
-          
-          // Try multiple ways to extract the result
-          let resultText = ''
-          
-          if (typeof data === 'string') {
-            resultText = data
-          } else if (data.result?.text) {
-            resultText = data.result.text
-          } else if (data.result?.json) {
-            resultText = typeof data.result.json === 'string' ? data.result.json : JSON.stringify(data.result.json)
-          } else if (data.result) {
-            resultText = typeof data.result === 'string' ? data.result : JSON.stringify(data.result)
-          } else if (data.output?.text) {
-            resultText = data.output.text
-          } else if (data.output) {
-            resultText = typeof data.output === 'string' ? data.output : JSON.stringify(data.output)
-          } else if (data.content) {
-            resultText = typeof data.content === 'string' ? data.content : JSON.stringify(data.content)
-          }
-          
-          debugInfo += ` | Extracted: ${resultText.substring(0, 300)}`
-          console.log(`Extracted text for ${ad.advertiserName}:`, resultText.substring(0, 500))
-          
-          // Try to find JSON in the response
-          const jsonMatch = resultText.match(/\{[\s\S]*?\}/g)
-          if (jsonMatch) {
-            // Try each JSON match until one works
-            for (const match of jsonMatch) {
-              try {
-                const parsed = JSON.parse(match)
-                if (parsed.price !== undefined || parsed.priceFormatted || parsed.headline) {
-                  parsedResult = parsed
-                  console.log(`Parsed result for ${ad.advertiserName}:`, parsedResult)
-                  break
-                }
-              } catch {
-                continue
-              }
-            }
+            throw new Error(`Invalid JSON: ${responseText.substring(0, 100)}`)
           }
 
-          // Extract and normalize price
-          const price = extractPrice(parsedResult.price) || extractPrice(parsedResult.priceFormatted)
+          // Firecrawl returns { success: true, data: { markdown: "..." } }
+          const markdown = data.data?.markdown || data.markdown || ''
+          debugInfo += `Markdown length: ${markdown.length} | `
+          
+          console.log(`Firecrawl response for ${ad.advertiserName}:`, markdown.substring(0, 500))
+
+          // Extract info from markdown
+          const extractedInfo = extractInfoFromMarkdown(markdown)
+          
+          debugInfo += `Price: ${extractedInfo.price}`
 
           return {
             id: ad.id,
@@ -209,14 +243,14 @@ Responde SOLO el JSON:`,
             adLibraryUrl: ad.adLibraryUrl || '',
             adText: ad.adText || '',
             ctaText: ad.ctaText || '',
-            price: price,
-            priceFormatted: parsedResult.priceFormatted || (price ? `$${price.toLocaleString()}` : null),
-            combo: parsedResult.combo || null,
-            gift: parsedResult.gift || null,
-            angle: parsedResult.angle || null,
-            headline: parsedResult.headline || null,
-            cta: parsedResult.cta || null,
-            debug: debugInfo.substring(0, 500),
+            price: extractedInfo.price || null,
+            priceFormatted: extractedInfo.priceFormatted || null,
+            combo: extractedInfo.combo || null,
+            gift: extractedInfo.gift || null,
+            angle: extractedInfo.angle || null,
+            headline: extractedInfo.headline || null,
+            cta: extractedInfo.cta || null,
+            debug: debugInfo,
           }
         } catch (error: any) {
           console.error(`Error analyzing ${ad.landingUrl}:`, error)
@@ -237,7 +271,7 @@ Responde SOLO el JSON:`,
             error: error.name === 'AbortError' 
               ? 'Timeout al analizar landing' 
               : (error.message || 'Error al analizar landing page'),
-            debug: debugInfo.substring(0, 500),
+            debug: debugInfo,
           }
         }
       })
