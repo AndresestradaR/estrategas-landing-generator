@@ -65,8 +65,8 @@ export async function POST(request: Request) {
 
     console.log('Searching Meta Ads Library with Apify:', metaAdsUrl)
 
-    // Add timeout=60 to prevent long waits, and memory=512 for faster execution
-    const apifyResponse = await fetch(`${APIFY_API_URL}?token=${apifyApiKey}&timeout=60&memory=512`, {
+    // Add timeout=90 to prevent long waits
+    const apifyResponse = await fetch(`${APIFY_API_URL}?token=${apifyApiKey}&timeout=90`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -78,8 +78,8 @@ export async function POST(request: Request) {
             method: 'GET'
           }
         ],
-        count: 5,
-        limitPerSource: 5,
+        count: 10,
+        limitPerSource: 10,
         scrapeAdDetails: true,
       }),
     })
@@ -136,7 +136,7 @@ export async function POST(request: Request) {
       })
     }
 
-    // Remove duplicates by landing URL domain and limit to 5
+    // Remove duplicates by landing URL domain and limit to 5 for faster processing
     const seenDomains = new Set<string>()
     const uniqueAds = adsFound.filter(ad => {
       try {
