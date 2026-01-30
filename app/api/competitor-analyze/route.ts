@@ -28,6 +28,29 @@ interface AnalyzedCompetitor {
   headline: string | null
   cta: string | null
   error?: string
+  rawResponse?: string
+}
+
+// Helper to extract price from various formats
+function extractPrice(priceValue: any): number | null {
+  if (priceValue === null || priceValue === undefined) return null
+  
+  // If already a number
+  if (typeof priceValue === 'number') return priceValue
+  
+  // If string, try to extract number
+  if (typeof priceValue === 'string') {
+    // Remove currency symbols, dots as thousands separator, keep comma as decimal
+    const cleaned = priceValue
+      .replace(/[^\d.,]/g, '') // Remove non-numeric except . and ,
+      .replace(/\.(?=\d{3})/g, '') // Remove dots used as thousands separator
+      .replace(',', '.') // Replace comma with dot for decimal
+    
+    const num = parseFloat(cleaned)
+    if (!isNaN(num) && num > 0) return Math.round(num)
+  }
+  
+  return null
 }
 
 export async function POST(request: Request) {
@@ -72,7 +95,7 @@ export async function POST(request: Request) {
       ads.map(async (ad) => {
         try {
           const controller = new AbortController()
-          const timeoutId = setTimeout(() => controller.abort(), 45000) // 45 sec timeout
+          const timeoutId = setTimeout(() => controller.abort(), 60000) // 60 sec timeout
 
           const response = await fetch(RTRVR_API_URL, {
             method: 'POST',
@@ -82,21 +105,32 @@ export async function POST(request: Request) {
             },
             signal: controller.signal,
             body: JSON.stringify({
-              input: `Analiza esta landing page de ecommerce/dropshipping y extrae en JSON:
+              input: `Eres un experto analizando landing pages de ecommerce en Latinoamérica (Colombia, México, etc).
 
-1. "price": Precio principal del producto (solo número, sin símbolo de moneda). Si hay precio promocional/descuento, usa ese.
-2. "priceFormatted": Precio como aparece en la página (ej: "$89.900", "COP 74.900")
-3. "combo": Si hay oferta combo/kit (ej: "2x1", "Kit completo", "Paquete familiar"). Si no hay, null.
-4. "gift": Regalos o beneficios incluidos (ej: "Envío gratis", "Regalo sorpresa", "Garantía extendida"). Si no hay, null.
-5. "angle": Propuesta de valor principal o gancho de venta en máximo 15 palabras.
-6. "headline": Título principal de la página o nombre del producto.
-7. "cta": Texto exacto del botón principal de compra.
+Analiza esta página y extrae la siguiente información en formato JSON:
 
-Responde SOLO el JSON válido. Si no encuentras un campo, usa null.`,
+{
+  "price": <número del precio de venta actual, sin símbolos ni puntos de miles. Ej: si dice "$89.900" escribe 89900>,
+  "priceFormatted": "<precio exacto como aparece en la página, ej: '$89.900'>",
+  "combo": "<oferta combo si existe, ej: '2x1', 'Kit 3 unidades'. Si no hay, null>",
+  "gift": "<regalos o beneficios, ej: 'Envío gratis', 'Regalo sorpresa'. Si no hay, null>",
+  "angle": "<gancho de venta principal en max 15 palabras>",
+  "headline": "<título del producto>",
+  "cta": "<texto del botón de compra>"
+}
+
+IMPORTANTE:
+- Busca el precio grande/destacado que es el precio de VENTA (no el tachado)
+- En Colombia usan puntos como separador de miles (89.900 = 89900)
+- Responde ÚNICAMENTE el JSON, sin explicaciones adicionales`,
               urls: [ad.landingUrl],
               response: {
                 verbosity: 'final',
-                inlineOutputMaxBytes: 25000
+                inlineOutputMaxBytes: 50000
+              },
+              browser: {
+                waitForSelector: 'body',
+                waitTime: 5000 // Wait 5 seconds for JS to render
               }
             }),
           })
@@ -104,22 +138,47 @@ Responde SOLO el JSON válido. Si no encuentras un campo, usa null.`,
           clearTimeout(timeoutId)
 
           if (!response.ok) {
+            const errorText = await response.text()
+            console.error(`rtrvr.ai error for ${ad.landingUrl}:`, response.status, errorText)
             throw new Error(`HTTP ${response.status}`)
           }
 
           const data = await response.json()
           
+          // Log raw response for debugging
+          const rawResponse = JSON.stringify(data).substring(0, 1000)
+          console.log(`rtrvr.ai response for ${ad.advertiserName}:`, rawResponse)
+          
           let parsedResult: Partial<AnalyzedCompetitor> = {}
           
           try {
-            const resultText = data.result?.text || data.result?.json || JSON.stringify(data.result) || ''
+            // Try multiple ways to extract the result
+            let resultText = ''
+            
+            if (data.result?.text) {
+              resultText = data.result.text
+            } else if (data.result?.json) {
+              resultText = typeof data.result.json === 'string' ? data.result.json : JSON.stringify(data.result.json)
+            } else if (data.result) {
+              resultText = typeof data.result === 'string' ? data.result : JSON.stringify(data.result)
+            } else if (data.output) {
+              resultText = typeof data.output === 'string' ? data.output : JSON.stringify(data.output)
+            }
+            
+            console.log(`Extracted text for ${ad.advertiserName}:`, resultText.substring(0, 500))
+            
+            // Try to find JSON in the response
             const jsonMatch = resultText.match(/\{[\s\S]*\}/)
             if (jsonMatch) {
               parsedResult = JSON.parse(jsonMatch[0])
+              console.log(`Parsed result for ${ad.advertiserName}:`, parsedResult)
             }
           } catch (parseError) {
-            console.error('Error parsing landing page result:', parseError)
+            console.error(`Error parsing result for ${ad.advertiserName}:`, parseError)
           }
+
+          // Extract and normalize price
+          const price = extractPrice(parsedResult.price)
 
           return {
             id: ad.id,
@@ -128,8 +187,8 @@ Responde SOLO el JSON válido. Si no encuentras un campo, usa null.`,
             adLibraryUrl: ad.adLibraryUrl || '',
             adText: ad.adText || '',
             ctaText: ad.ctaText || '',
-            price: parsedResult.price ? Number(parsedResult.price) : null,
-            priceFormatted: parsedResult.priceFormatted || null,
+            price: price,
+            priceFormatted: parsedResult.priceFormatted || (price ? `$${price.toLocaleString()}` : null),
             combo: parsedResult.combo || null,
             gift: parsedResult.gift || null,
             angle: parsedResult.angle || null,
