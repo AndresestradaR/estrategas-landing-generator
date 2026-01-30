@@ -20,6 +20,9 @@
     },
     "app/api/enhance-prompt/route.ts": {
       "maxDuration": 30
+    },
+    "app/api/competitor-analysis/route.ts": {
+      "maxDuration": 120
     }
   }
 }
