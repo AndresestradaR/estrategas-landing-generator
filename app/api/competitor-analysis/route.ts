@@ -65,7 +65,8 @@ export async function POST(request: Request) {
 
     console.log('Searching Meta Ads Library with Apify:', metaAdsUrl)
 
-    const apifyResponse = await fetch(`${APIFY_API_URL}?token=${apifyApiKey}`, {
+    // Add timeout=60 to prevent long waits, and memory=512 for faster execution
+    const apifyResponse = await fetch(`${APIFY_API_URL}?token=${apifyApiKey}&timeout=60&memory=512`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -77,19 +78,25 @@ export async function POST(request: Request) {
             method: 'GET'
           }
         ],
-        count: 10,
-        limitPerSource: 10,
+        count: 5,
+        limitPerSource: 5,
         scrapeAdDetails: true,
       }),
     })
 
     if (!apifyResponse.ok) {
       const errorText = await apifyResponse.text()
-      console.error('Apify error:', errorText)
+      console.error('Apify error:', apifyResponse.status, errorText)
+      
+      if (apifyResponse.status === 408 || errorText.includes('timeout')) {
+        throw new Error('La búsqueda tardó demasiado. Intenta con una keyword más específica.')
+      }
       throw new Error(`Error buscando en Meta Ads Library: HTTP ${apifyResponse.status}`)
     }
 
     const apifyData = await apifyResponse.json()
+    
+    console.log('Apify response received, items:', Array.isArray(apifyData) ? apifyData.length : 'not array')
     
     // Parse ads from Apify response
     let adsFound: Array<{ 
@@ -129,7 +136,7 @@ export async function POST(request: Request) {
       })
     }
 
-    // Remove duplicates by landing URL domain and limit to 8
+    // Remove duplicates by landing URL domain and limit to 5
     const seenDomains = new Set<string>()
     const uniqueAds = adsFound.filter(ad => {
       try {
@@ -140,45 +147,45 @@ export async function POST(request: Request) {
       } catch {
         return false
       }
-    }).slice(0, 8)
+    }).slice(0, 5)
 
     console.log(`Processing ${uniqueAds.length} unique landing pages with rtrvr.ai`)
 
-    // Step 2: Scrape each landing page for pricing using rtrvr.ai
+    // Step 2: Scrape each landing page for pricing using rtrvr.ai (in parallel)
     const results: CompetitorData[] = await Promise.all(
       uniqueAds.map(async (ad) => {
         try {
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 sec timeout per landing
+
           const response = await fetch(RTRVR_API_URL, {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${rtrvrApiKey}`,
               'Content-Type': 'application/json',
             },
+            signal: controller.signal,
             body: JSON.stringify({
-              input: `Analiza esta landing page de ecommerce/dropshipping y extrae la siguiente información en JSON:
-              
-1. "price": El precio principal del producto (solo el número, sin símbolo de moneda). Si hay precio tachado y precio promocional, usa el promocional. El precio debe estar en la moneda local (COP para Colombia, MXN para México, etc).
-2. "priceFormatted": El precio formateado como aparece en la página (ej: "$89.900", "COP 89,900")
-3. "combo": Describe el combo u oferta si existe (ej: "2x1", "Lleva 3 paga 2", "Kit completo", "Compra 2 con descuento"). Si no hay combo, null.
-4. "gift": Describe los regalos o bonos incluidos (ej: "Envío gratis", "Ebook gratis", "Accesorio incluido", "Garantía extendida"). Si no hay regalos, null.
-5. "angle": El ángulo de venta principal o propuesta de valor en máximo 15 palabras (ej: "Resultados en 7 días", "Tecnología alemana", "100% natural", "El secreto de las famosas")
-6. "headline": El título principal o headline de la página
-7. "cta": El texto del botón de compra principal (ej: "Comprar ahora", "Agregar al carrito", "¡Lo quiero!", "Pedir ahora")
+              input: `Analiza esta landing page de ecommerce y extrae en JSON:
 
-IMPORTANTE:
-- Busca el precio MÁS VISIBLE, generalmente el precio promocional/con descuento
-- Si hay múltiples productos, enfócate en el producto principal o el más destacado
-- Los precios en Colombia suelen ser números grandes (ej: 89900, 129000)
-- Busca ofertas tipo "2x1", "3x2", "combo", "kit", "pack"
+1. "price": Precio principal (solo número, sin símbolo). Usa el precio promocional si hay descuento.
+2. "priceFormatted": Precio como aparece (ej: "$89.900")
+3. "combo": Oferta/combo si existe (ej: "2x1", "Kit completo"). Si no hay, null.
+4. "gift": Regalos incluidos (ej: "Envío gratis"). Si no hay, null.
+5. "angle": Propuesta de valor principal en máximo 10 palabras.
+6. "headline": Título principal de la página.
+7. "cta": Texto del botón de compra.
 
-Responde SOLO con el JSON, sin explicaciones adicionales. Si no puedes encontrar algún dato, usa null.`,
+Responde SOLO el JSON. Si no encuentras algo, usa null.`,
               urls: [ad.landingUrl],
               response: {
                 verbosity: 'final',
-                inlineOutputMaxBytes: 50000
+                inlineOutputMaxBytes: 20000
               }
             }),
           })
+
+          clearTimeout(timeoutId)
 
           if (!response.ok) {
             throw new Error(`HTTP ${response.status}`)
@@ -227,7 +234,7 @@ Responde SOLO con el JSON, sin explicaciones adicionales. Si no puedes encontrar
             angle: null,
             headline: null,
             cta: null,
-            error: error.message || 'Error al procesar landing page'
+            error: error.name === 'AbortError' ? 'Timeout al procesar landing' : (error.message || 'Error al procesar landing page')
           }
         }
       })
