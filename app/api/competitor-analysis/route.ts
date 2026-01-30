@@ -71,9 +71,15 @@ export async function POST(request: Request) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        urls: [metaAdsUrl],
+        urls: [
+          {
+            url: metaAdsUrl,
+            method: 'GET'
+          }
+        ],
+        count: 10,
+        limitPerSource: 10,
         scrapeAdDetails: true,
-        totalRecordsRequired: 10,
       }),
     })
 
