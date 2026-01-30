@@ -28,7 +28,7 @@ interface AnalyzedCompetitor {
   headline: string | null
   cta: string | null
   error?: string
-  rawResponse?: string
+  debug?: string
 }
 
 // Helper to extract price from various formats
@@ -93,9 +93,40 @@ export async function POST(request: Request) {
     // Analyze each landing page in parallel
     const results: AnalyzedCompetitor[] = await Promise.all(
       ads.map(async (ad) => {
+        let debugInfo = ''
+        
         try {
           const controller = new AbortController()
-          const timeoutId = setTimeout(() => controller.abort(), 60000) // 60 sec timeout
+          const timeoutId = setTimeout(() => controller.abort(), 60000)
+
+          const requestBody = {
+            input: `Extrae información de esta página de ecommerce y responde SOLO con JSON válido:
+
+{
+  "price": 89900,
+  "priceFormatted": "$89.900",
+  "combo": null,
+  "gift": "Envío gratis",
+  "angle": "Controla el azúcar naturalmente",
+  "headline": "Berberina 1500",
+  "cta": "Comprar ahora"
+}
+
+INSTRUCCIONES:
+- price: número sin puntos ni símbolos (89.900 → 89900)
+- priceFormatted: precio exacto como aparece
+- Busca el precio de VENTA (grande, destacado), no el tachado
+- Si no encuentras algo, usa null
+
+Responde SOLO el JSON:`,
+            urls: [ad.landingUrl],
+            response: {
+              verbosity: 'final',
+              inlineOutputMaxBytes: 50000
+            }
+          }
+
+          debugInfo += `Request: ${JSON.stringify(requestBody).substring(0, 200)}... | `
 
           const response = await fetch(RTRVR_API_URL, {
             method: 'POST',
@@ -104,81 +135,72 @@ export async function POST(request: Request) {
               'Content-Type': 'application/json',
             },
             signal: controller.signal,
-            body: JSON.stringify({
-              input: `Eres un experto analizando landing pages de ecommerce en Latinoamérica (Colombia, México, etc).
-
-Analiza esta página y extrae la siguiente información en formato JSON:
-
-{
-  "price": <número del precio de venta actual, sin símbolos ni puntos de miles. Ej: si dice "$89.900" escribe 89900>,
-  "priceFormatted": "<precio exacto como aparece en la página, ej: '$89.900'>",
-  "combo": "<oferta combo si existe, ej: '2x1', 'Kit 3 unidades'. Si no hay, null>",
-  "gift": "<regalos o beneficios, ej: 'Envío gratis', 'Regalo sorpresa'. Si no hay, null>",
-  "angle": "<gancho de venta principal en max 15 palabras>",
-  "headline": "<título del producto>",
-  "cta": "<texto del botón de compra>"
-}
-
-IMPORTANTE:
-- Busca el precio grande/destacado que es el precio de VENTA (no el tachado)
-- En Colombia usan puntos como separador de miles (89.900 = 89900)
-- Responde ÚNICAMENTE el JSON, sin explicaciones adicionales`,
-              urls: [ad.landingUrl],
-              response: {
-                verbosity: 'final',
-                inlineOutputMaxBytes: 50000
-              },
-              browser: {
-                waitForSelector: 'body',
-                waitTime: 5000 // Wait 5 seconds for JS to render
-              }
-            }),
+            body: JSON.stringify(requestBody),
           })
 
           clearTimeout(timeoutId)
 
+          const responseText = await response.text()
+          debugInfo += `Status: ${response.status} | Response: ${responseText.substring(0, 500)}`
+
           if (!response.ok) {
-            const errorText = await response.text()
-            console.error(`rtrvr.ai error for ${ad.landingUrl}:`, response.status, errorText)
-            throw new Error(`HTTP ${response.status}`)
+            console.error(`rtrvr.ai error for ${ad.landingUrl}:`, response.status, responseText)
+            throw new Error(`HTTP ${response.status}: ${responseText.substring(0, 100)}`)
           }
 
-          const data = await response.json()
+          let data: any
+          try {
+            data = JSON.parse(responseText)
+          } catch {
+            throw new Error(`Invalid JSON response: ${responseText.substring(0, 100)}`)
+          }
           
-          // Log raw response for debugging
-          const rawResponse = JSON.stringify(data).substring(0, 1000)
-          console.log(`rtrvr.ai response for ${ad.advertiserName}:`, rawResponse)
+          console.log(`rtrvr.ai raw response for ${ad.advertiserName}:`, JSON.stringify(data).substring(0, 1000))
           
           let parsedResult: Partial<AnalyzedCompetitor> = {}
           
-          try {
-            // Try multiple ways to extract the result
-            let resultText = ''
-            
-            if (data.result?.text) {
-              resultText = data.result.text
-            } else if (data.result?.json) {
-              resultText = typeof data.result.json === 'string' ? data.result.json : JSON.stringify(data.result.json)
-            } else if (data.result) {
-              resultText = typeof data.result === 'string' ? data.result : JSON.stringify(data.result)
-            } else if (data.output) {
-              resultText = typeof data.output === 'string' ? data.output : JSON.stringify(data.output)
+          // Try multiple ways to extract the result
+          let resultText = ''
+          
+          if (typeof data === 'string') {
+            resultText = data
+          } else if (data.result?.text) {
+            resultText = data.result.text
+          } else if (data.result?.json) {
+            resultText = typeof data.result.json === 'string' ? data.result.json : JSON.stringify(data.result.json)
+          } else if (data.result) {
+            resultText = typeof data.result === 'string' ? data.result : JSON.stringify(data.result)
+          } else if (data.output?.text) {
+            resultText = data.output.text
+          } else if (data.output) {
+            resultText = typeof data.output === 'string' ? data.output : JSON.stringify(data.output)
+          } else if (data.content) {
+            resultText = typeof data.content === 'string' ? data.content : JSON.stringify(data.content)
+          }
+          
+          debugInfo += ` | Extracted: ${resultText.substring(0, 300)}`
+          console.log(`Extracted text for ${ad.advertiserName}:`, resultText.substring(0, 500))
+          
+          // Try to find JSON in the response
+          const jsonMatch = resultText.match(/\{[\s\S]*?\}/g)
+          if (jsonMatch) {
+            // Try each JSON match until one works
+            for (const match of jsonMatch) {
+              try {
+                const parsed = JSON.parse(match)
+                if (parsed.price !== undefined || parsed.priceFormatted || parsed.headline) {
+                  parsedResult = parsed
+                  console.log(`Parsed result for ${ad.advertiserName}:`, parsedResult)
+                  break
+                }
+              } catch {
+                continue
+              }
             }
-            
-            console.log(`Extracted text for ${ad.advertiserName}:`, resultText.substring(0, 500))
-            
-            // Try to find JSON in the response
-            const jsonMatch = resultText.match(/\{[\s\S]*\}/)
-            if (jsonMatch) {
-              parsedResult = JSON.parse(jsonMatch[0])
-              console.log(`Parsed result for ${ad.advertiserName}:`, parsedResult)
-            }
-          } catch (parseError) {
-            console.error(`Error parsing result for ${ad.advertiserName}:`, parseError)
           }
 
           // Extract and normalize price
-          const price = extractPrice(parsedResult.price)
+          const price = extractPrice(parsedResult.price) || extractPrice(parsedResult.priceFormatted)
 
           return {
             id: ad.id,
@@ -194,6 +216,7 @@ IMPORTANTE:
             angle: parsedResult.angle || null,
             headline: parsedResult.headline || null,
             cta: parsedResult.cta || null,
+            debug: debugInfo.substring(0, 500),
           }
         } catch (error: any) {
           console.error(`Error analyzing ${ad.landingUrl}:`, error)
@@ -213,7 +236,8 @@ IMPORTANTE:
             cta: null,
             error: error.name === 'AbortError' 
               ? 'Timeout al analizar landing' 
-              : (error.message || 'Error al analizar landing page')
+              : (error.message || 'Error al analizar landing page'),
+            debug: debugInfo.substring(0, 500),
           }
         }
       })
