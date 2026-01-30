@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Button, Input, Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui'
-import { Key, ExternalLink, Check, Loader2, Sparkles, Zap, Image as ImageIcon, Cpu, PlayCircle, X } from 'lucide-react'
+import { Key, ExternalLink, Check, Loader2, Sparkles, Zap, Image as ImageIcon, Cpu, PlayCircle, X, Globe, Mic } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export const dynamic = 'force-dynamic'
@@ -22,6 +22,8 @@ export default function SettingsPage() {
   const [openaiKey, setOpenaiKey] = useState<ApiKeyState>({ value: '', hasKey: false, isSaving: false })
   const [kieKey, setKieKey] = useState<ApiKeyState>({ value: '', hasKey: false, isSaving: false })
   const [bflKey, setBflKey] = useState<ApiKeyState>({ value: '', hasKey: false, isSaving: false })
+  const [rtrvrKey, setRtrvrKey] = useState<ApiKeyState>({ value: '', hasKey: false, isSaving: false })
+  const [elevenlabsKey, setElevenlabsKey] = useState<ApiKeyState>({ value: '', hasKey: false, isSaving: false })
 
   useEffect(() => {
     fetchKeys()
@@ -44,6 +46,12 @@ export default function SettingsPage() {
       if (data.hasBflApiKey) {
         setBflKey(prev => ({ ...prev, hasKey: true, value: data.maskedBflApiKey || '' }))
       }
+      if (data.hasRtrvrApiKey) {
+        setRtrvrKey(prev => ({ ...prev, hasKey: true, value: data.maskedRtrvrApiKey || '' }))
+      }
+      if (data.hasElevenlabsApiKey) {
+        setElevenlabsKey(prev => ({ ...prev, hasKey: true, value: data.maskedElevenlabsApiKey || '' }))
+      }
     } catch (error) {
       console.error('Error fetching keys:', error)
     } finally {
@@ -51,12 +59,14 @@ export default function SettingsPage() {
     }
   }
 
-  const handleSaveKey = async (keyType: 'google' | 'openai' | 'kie' | 'bfl') => {
+  const handleSaveKey = async (keyType: 'google' | 'openai' | 'kie' | 'bfl' | 'rtrvr' | 'elevenlabs') => {
     const keyMap = {
       google: { state: googleKey, setter: setGoogleKey, field: 'googleApiKey' },
       openai: { state: openaiKey, setter: setOpenaiKey, field: 'openaiApiKey' },
       kie: { state: kieKey, setter: setKieKey, field: 'kieApiKey' },
       bfl: { state: bflKey, setter: setBflKey, field: 'bflApiKey' },
+      rtrvr: { state: rtrvrKey, setter: setRtrvrKey, field: 'rtrvrApiKey' },
+      elevenlabs: { state: elevenlabsKey, setter: setElevenlabsKey, field: 'elevenlabsApiKey' },
     }
 
     const { state, setter, field } = keyMap[keyType]
@@ -165,6 +175,14 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+
+      {/* Section: Generación de Imágenes */}
+      <div className="mb-6">
+        <h2 className="text-lg font-semibold text-text-primary mb-4 flex items-center gap-2">
+          <ImageIcon className="w-5 h-5 text-accent" />
+          Generación de Imágenes
+        </h2>
+      </div>
 
       {/* Google/Gemini API Key */}
       <Card className="mb-4">
@@ -350,6 +368,106 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      {/* Section: Herramientas Adicionales */}
+      <div className="mt-8 mb-6">
+        <h2 className="text-lg font-semibold text-text-primary mb-4 flex items-center gap-2">
+          <Globe className="w-5 h-5 text-accent" />
+          Herramientas Adicionales
+        </h2>
+      </div>
+
+      {/* rtrvr.ai API Key */}
+      <Card className="mb-4">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <div className="p-2 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-500 text-white">
+              <Globe className="w-4 h-4" />
+            </div>
+            rtrvr.ai (Web Scraping)
+            {rtrvrKey.hasKey && (
+              <span className="flex items-center gap-1 text-xs text-success ml-auto">
+                <Check className="w-3 h-3" />
+                Configurada
+              </span>
+            )}
+          </CardTitle>
+          <CardDescription>
+            Para: Análisis de competencia - Scrapea landing pages y extrae precios (~$0.12/tarea)
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex gap-2">
+            <Input
+              type="password"
+              placeholder="rtrvr_..."
+              value={rtrvrKey.value}
+              onChange={(e) => setRtrvrKey(prev => ({ ...prev, value: e.target.value }))}
+              className="flex-1"
+            />
+            <Button
+              onClick={() => handleSaveKey('rtrvr')}
+              isLoading={rtrvrKey.isSaving}
+            >
+              Guardar
+            </Button>
+          </div>
+          <a
+            href="https://www.rtrvr.ai/cloud"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-accent hover:text-accent-hover transition-colors"
+          >
+            Obtener API Key (Cloud → API Keys) <ExternalLink className="w-3 h-3" />
+          </a>
+        </CardContent>
+      </Card>
+
+      {/* ElevenLabs API Key */}
+      <Card className="mb-4">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <div className="p-2 rounded-lg bg-gradient-to-br from-violet-500 to-purple-500 text-white">
+              <Mic className="w-4 h-4" />
+            </div>
+            ElevenLabs (Text-to-Speech)
+            {elevenlabsKey.hasKey && (
+              <span className="flex items-center gap-1 text-xs text-success ml-auto">
+                <Check className="w-3 h-3" />
+                Configurada
+              </span>
+            )}
+          </CardTitle>
+          <CardDescription>
+            Para: Generación de voz - Crea audios para videos y ads
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex gap-2">
+            <Input
+              type="password"
+              placeholder="sk_..."
+              value={elevenlabsKey.value}
+              onChange={(e) => setElevenlabsKey(prev => ({ ...prev, value: e.target.value }))}
+              className="flex-1"
+            />
+            <Button
+              onClick={() => handleSaveKey('elevenlabs')}
+              isLoading={elevenlabsKey.isSaving}
+            >
+              Guardar
+            </Button>
+          </div>
+          <a
+            href="https://elevenlabs.io/app/settings/api-keys"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-accent hover:text-accent-hover transition-colors"
+          >
+            Obtener API Key <ExternalLink className="w-3 h-3" />
+          </a>
+        </CardContent>
+      </Card>
+
       {/* Info Card */}
       <Card className="mt-6" variant="glass">
         <CardContent className="pt-6">
@@ -373,6 +491,14 @@ export default function SettingsPage() {
             <li className="flex items-start gap-2">
               <span className="text-pink-500">•</span>
               <span><strong>FLUX</strong> - Generación rápida con buenos resultados</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-cyan-500">•</span>
+              <span><strong>rtrvr.ai</strong> - Espía a tu competencia con scraping inteligente</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-violet-500">•</span>
+              <span><strong>ElevenLabs</strong> - Voces ultra realistas para tus videos</span>
             </li>
           </ul>
         </CardContent>
