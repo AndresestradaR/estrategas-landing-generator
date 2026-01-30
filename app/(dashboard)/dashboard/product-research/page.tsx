@@ -5,7 +5,7 @@ import { ProductFilters } from '@/components/productos/ProductFilters'
 import { ProductTable } from '@/components/productos/ProductTable'
 import { CookieInput } from '@/components/productos/CookieInput'
 import { Product, ProductFilters as Filters } from '@/lib/dropkiller/types'
-import { Target, AlertCircle, Search, Users, TrendingUp, DollarSign, ExternalLink, Loader2, CheckCircle, XCircle, BarChart3, Calculator, Truck, Package, Megaphone, PiggyBank, ThumbsUp, ThumbsDown, AlertTriangle } from 'lucide-react'
+import { Target, AlertCircle, Search, Users, TrendingUp, DollarSign, ExternalLink, Loader2, CheckCircle, XCircle, BarChart3, Calculator, Truck, Package, Megaphone, PiggyBank, ThumbsUp, ThumbsDown, AlertTriangle, Flame, Sparkles, TrendingDown } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 type TabType = 'search' | 'competitor'
@@ -200,19 +200,27 @@ export default function ProductResearchPage() {
     // Precio mínimo viable (para tener al menos 20% de margen real)
     const minViablePrice = Math.ceil((totalCostWithCPA / (1 - 0.20)) / 100) * 100
     
-    // Veredicto
+    // Veredicto con mensajes más cercanos
     let verdict: 'go' | 'maybe' | 'nogo' = 'nogo'
+    let verdictTitle = ''
     let verdictText = ''
+    let verdictTip = ''
     
     if (realMarginAtMin >= 15000) {
       verdict = 'go'
-      verdictText = '¡Dale con todo! Buen margen incluso al precio más bajo.'
+      verdictTitle = '🔥 ¡Está pa\' darle!'
+      verdictText = 'Parcero, los números cuadran bien. Hay buen margen incluso si te toca competir al precio más bajo. A meterle que este tiene potencial.'
+      verdictTip = '🚀 Arranca con el precio promedio y vas ajustando según cómo responda el mercado.'
     } else if (realMarginAtAvg >= 15000) {
       verdict = 'maybe'
-      verdictText = 'Viable si vendes al precio promedio. Diferénciate para no competir por precio.'
+      verdictTitle = '🤔 Puede funcionar, pero ojo...'
+      verdictText = 'El margen es justo si vendes al precio del montón. La clave acá es diferenciarte: mejor landing, mejor regalo, mejor ángulo. No te vayas a la guerra de precios que ahí perdemos todos.'
+      verdictTip = `💡 Si lo vas a montar, véndelo mínimo a $${minViablePrice.toLocaleString()} para que te quede algo decente.`
     } else {
       verdict = 'nogo'
-      verdictText = 'Margen muy bajo. Busca mejor proveedor o descarta este producto.'
+      verdictTitle = '😬 Este está difícil...'
+      verdictText = 'Nea, con estos números el margen queda muy apretado. O consigues mejor precio con el proveedor, o mejor busca otro producto. No vale la pena quemarse por tan poquito.'
+      verdictTip = `💸 Para que valga la pena tendrías que venderlo a $${minViablePrice.toLocaleString()} y la competencia está más abajo.`
     }
 
     return {
@@ -226,7 +234,9 @@ export default function ProductResearchPage() {
       realMarginAtAvg,
       minViablePrice,
       verdict,
-      verdictText
+      verdictTitle,
+      verdictText,
+      verdictTip
     }
   }, [analysisStats, costProduct, costShipping, costCPA, effectiveRate])
 
@@ -521,7 +531,7 @@ export default function ProductResearchPage() {
                 </div>
                 
                 <p className="text-text-secondary text-sm mb-6">
-                  Ingresa tus costos para calcular si el producto es rentable comparado con la competencia.
+                  Mete tus costos acá y miramos si los números dan o si toca buscar otro producto 👇
                 </p>
 
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -614,7 +624,7 @@ export default function ProductResearchPage() {
                         <p className="text-lg font-semibold text-text-primary">${marginCalc.totalCostWithCPA.toLocaleString()}</p>
                       </div>
                       <div>
-                        <p className="text-xs text-text-secondary mb-1">Precio Mín. Viable (20% margen)</p>
+                        <p className="text-xs text-text-secondary mb-1">Precio Mín. pa&apos; que cuadre</p>
                         <p className="text-lg font-semibold text-accent">${marginCalc.minViablePrice.toLocaleString()}</p>
                       </div>
                     </div>
@@ -623,7 +633,7 @@ export default function ProductResearchPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {/* Al precio mínimo */}
                       <div className={`p-4 rounded-lg border ${marginCalc.realMarginAtMin >= 15000 ? 'bg-green-500/5 border-green-500/30' : marginCalc.realMarginAtMin >= 0 ? 'bg-yellow-500/5 border-yellow-500/30' : 'bg-red-500/5 border-red-500/30'}`}>
-                        <p className="text-sm text-text-secondary mb-2">Si vendes al precio mínimo (${analysisStats.minPrice.toLocaleString()})</p>
+                        <p className="text-sm text-text-secondary mb-2">Si te toca pelear al precio mínimo (${analysisStats.minPrice.toLocaleString()})</p>
                         <div className="flex items-end justify-between">
                           <div>
                             <p className="text-xs text-text-secondary">Margen bruto</p>
@@ -633,7 +643,7 @@ export default function ProductResearchPage() {
                             <p className="text-xs text-text-secondary">({marginCalc.marginPercentAtMin.toFixed(1)}%)</p>
                           </div>
                           <div className="text-right">
-                            <p className="text-xs text-text-secondary">Margen real ({effectiveRate}% efect.)</p>
+                            <p className="text-xs text-text-secondary">Lo que realmente queda ({effectiveRate}% efect.)</p>
                             <p className={`text-xl font-bold ${marginCalc.realMarginAtMin >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                               ${Math.round(marginCalc.realMarginAtMin).toLocaleString()}
                             </p>
@@ -653,7 +663,7 @@ export default function ProductResearchPage() {
                             <p className="text-xs text-text-secondary">({marginCalc.marginPercentAtAvg.toFixed(1)}%)</p>
                           </div>
                           <div className="text-right">
-                            <p className="text-xs text-text-secondary">Margen real ({effectiveRate}% efect.)</p>
+                            <p className="text-xs text-text-secondary">Lo que realmente queda ({effectiveRate}% efect.)</p>
                             <p className={`text-xl font-bold ${marginCalc.realMarginAtAvg >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                               ${Math.round(marginCalc.realMarginAtAvg).toLocaleString()}
                             </p>
@@ -679,14 +689,14 @@ export default function ProductResearchPage() {
                             : 'bg-red-500/20'
                         }`}>
                           {marginCalc.verdict === 'go' ? (
-                            <ThumbsUp className="w-6 h-6 text-green-500" />
+                            <Flame className="w-6 h-6 text-green-500" />
                           ) : marginCalc.verdict === 'maybe' ? (
-                            <AlertTriangle className="w-6 h-6 text-yellow-500" />
+                            <Sparkles className="w-6 h-6 text-yellow-500" />
                           ) : (
-                            <ThumbsDown className="w-6 h-6 text-red-500" />
+                            <TrendingDown className="w-6 h-6 text-red-500" />
                           )}
                         </div>
-                        <div>
+                        <div className="flex-1">
                           <h3 className={`text-lg font-semibold mb-2 ${
                             marginCalc.verdict === 'go' 
                               ? 'text-green-500' 
@@ -694,18 +704,14 @@ export default function ProductResearchPage() {
                               ? 'text-yellow-500'
                               : 'text-red-500'
                           }`}>
-                            {marginCalc.verdict === 'go' && '✅ ¡DALE! - Producto Rentable'}
-                            {marginCalc.verdict === 'maybe' && '⚠️ PUEDE SER - Evalúa bien'}
-                            {marginCalc.verdict === 'nogo' && '❌ NO VALE LA PENA - Descarta'}
+                            {marginCalc.verdictTitle}
                           </h3>
-                          <p className="text-text-secondary">
+                          <p className="text-text-secondary mb-3">
                             {marginCalc.verdictText}
                           </p>
-                          {marginCalc.verdict !== 'go' && (
-                            <p className="text-sm text-text-secondary mt-2">
-                              💡 <strong>Tip:</strong> Necesitas vender a mínimo <strong>${marginCalc.minViablePrice.toLocaleString()}</strong> para tener 20% de margen.
-                            </p>
-                          )}
+                          <p className="text-sm text-text-secondary/80 bg-background/50 rounded-lg px-3 py-2">
+                            {marginCalc.verdictTip}
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -716,7 +722,7 @@ export default function ProductResearchPage() {
                 {!marginCalc && (
                   <div className="text-center py-6 text-text-secondary">
                     <Calculator className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                    <p>Ingresa todos los costos para ver el análisis de márgenes</p>
+                    <p>Llena todos los campos pa&apos; ver si los números dan 📊</p>
                   </div>
                 )}
               </div>
