@@ -35,25 +35,71 @@ export async function scrapeWithBrowser(url: string): Promise<ScrapedOffer | nul
     // Escapar la URL para usarla dentro del código
     const escapedUrl = url.replace(/'/g, "\\'").replace(/"/g, '\\"')
 
-    // Usar /content endpoint que es más simple y confiable
-    const contentUrl = 'https://chrome.browserless.io/content'
+    // Usar /function endpoint con código Puppeteer para hacer click en botones
+    const functionUrl = 'https://chrome.browserless.io/function'
 
-    const response = await fetch(`${contentUrl}?token=${apiKey}`, {
+    const puppeteerCode = `
+export default async function({ page }) {
+  await page.goto("${escapedUrl}", { waitUntil: "networkidle2", timeout: 20000 });
+  await new Promise(r => setTimeout(r, 2000));
+
+  // Buscar y hacer click en botones de compra/oferta
+  const buttonSelectors = [
+    'button:has-text("QUIERO")',
+    'button:has-text("OFERTA")',
+    'button:has-text("COMPRAR")',
+    'button:has-text("PEDIR")',
+    'button:has-text("AGREGAR")',
+    '[class*="btn"]:has-text("QUIERO")',
+    '[class*="btn"]:has-text("OFERTA")',
+    '[class*="button"]:has-text("COMPRAR")',
+    'a:has-text("QUIERO LA OFERTA")',
+    'a:has-text("COMPRAR")',
+    '.add-to-cart',
+    '.btn-buy',
+    '[data-action="add-to-cart"]'
+  ];
+
+  for (const selector of buttonSelectors) {
+    try {
+      const elements = await page.$$("button, a, [role='button']");
+      for (const el of elements) {
+        const text = await el.evaluate(e => e.innerText || e.textContent || "");
+        if (text.toUpperCase().includes("QUIERO") ||
+            text.toUpperCase().includes("OFERTA") ||
+            text.toUpperCase().includes("COMPRAR") ||
+            text.toUpperCase().includes("PEDIR")) {
+          await el.click().catch(() => {});
+          await new Promise(r => setTimeout(r, 2000));
+          break;
+        }
+      }
+    } catch (e) {}
+  }
+
+  // Extraer texto
+  const fullText = await page.evaluate(() => document.body.innerText);
+
+  // Extraer precios de elementos específicos
+  const priceText = await page.evaluate(() => {
+    const els = document.querySelectorAll('[class*="price"], [class*="precio"], [class*="valor"], [class*="total"], [class*="offer"]');
+    return Array.from(els).map(e => e.innerText).join(" | ");
+  });
+
+  // Extraer texto de modals/popups
+  const modalText = await page.evaluate(() => {
+    const els = document.querySelectorAll('[class*="modal"], [class*="popup"], [class*="drawer"], [role="dialog"], [class*="offer"]');
+    return Array.from(els).map(e => e.innerText).join(" | ");
+  });
+
+  return { fullText: fullText.substring(0, 8000), priceText, modalText };
+}
+`;
+
+    const response = await fetch(`${functionUrl}?token=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        url: escapedUrl,
-        gotoOptions: {
-          waitUntil: 'networkidle2',
-          timeout: 20000
-        },
-        waitForSelector: {
-          selector: 'body',
-          timeout: 10000
-        },
-        // Esperar para que cargue contenido dinámico
-        waitForTimeout: 3000
-      })
+      body: JSON.stringify({ code: puppeteerCode })
     })
 
     console.log('[Browserless] Response status:', response.status)
@@ -65,22 +111,18 @@ export async function scrapeWithBrowser(url: string): Promise<ScrapedOffer | nul
       return null
     }
 
-    // /content devuelve HTML directamente
-    const html = await response.text()
-    console.log('[Browserless] SUCCESS! HTML length:', html.length)
+    // /function devuelve JSON con los datos extraídos
+    const data = await response.json()
+    console.log('[Browserless] SUCCESS!')
+    console.log('[Browserless] fullText length:', data.fullText?.length || 0)
+    console.log('[Browserless] priceText:', data.priceText?.substring(0, 300))
+    console.log('[Browserless] modalText:', data.modalText?.substring(0, 300))
 
-    // Extraer texto del HTML
-    const textContent = html
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-
-    console.log('[Browserless] Text content length:', textContent.length)
-    console.log('[Browserless] Text preview:', textContent.substring(0, 500))
-
-    const result = parseScrapedData({ fullText: textContent, prices: '', modalText: '' })
+    const result = parseScrapedData({
+      fullText: data.fullText || '',
+      prices: data.priceText || '',
+      modalText: data.modalText || ''
+    })
     console.log('[Browserless] Parsed result - prices:', result.prices.length, 'price:', result.price)
 
     return result
