@@ -27,6 +27,12 @@ interface SearchAd {
 }
 
 // Fase 2: Resultados analizados
+interface PriceOffer {
+  label: string
+  price: number
+  originalPrice?: number
+}
+
 interface AnalyzedCompetitor {
   id: string
   advertiserName: string
@@ -36,11 +42,13 @@ interface AnalyzedCompetitor {
   ctaText: string
   price: number | null
   priceFormatted: string | null
+  allPrices?: PriceOffer[]
   combo: string | null
   gift: string | null
   angle: string | null
   headline: string | null
   cta: string | null
+  source?: 'browserless' | 'jina'
   error?: string
 }
 
@@ -793,11 +801,31 @@ export default function ProductResearchPage() {
                               )}
                             </div>
                           </td>
-                          <td className="px-4 py-3 text-right">
+                          <td className="px-4 py-3">
                             {competitor.price ? (
-                              <span className="font-semibold text-text-primary">
-                                {competitor.priceFormatted || `$${competitor.price.toLocaleString()}`}
-                              </span>
+                              <div className="space-y-1">
+                                <span className="font-semibold text-text-primary block">
+                                  {competitor.priceFormatted || `$${competitor.price.toLocaleString()}`}
+                                </span>
+                                {competitor.allPrices && competitor.allPrices.length > 1 && (
+                                  <div className="space-y-0.5">
+                                    {competitor.allPrices.slice(0, 3).map((offer, idx) => (
+                                      <div key={idx} className="text-xs flex items-center gap-2 text-text-secondary">
+                                        <span className="truncate max-w-[80px]">{offer.label}:</span>
+                                        <span className="text-text-primary">${offer.price.toLocaleString()}</span>
+                                        {offer.originalPrice && (
+                                          <span className="line-through text-text-secondary/60">${offer.originalPrice.toLocaleString()}</span>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                                {competitor.source && (
+                                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${competitor.source === 'browserless' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500'}`}>
+                                    {competitor.source === 'browserless' ? 'Browser' : 'Jina'}
+                                  </span>
+                                )}
+                              </div>
                             ) : (
                               <span className="text-text-secondary text-sm">No encontrado</span>
                             )}

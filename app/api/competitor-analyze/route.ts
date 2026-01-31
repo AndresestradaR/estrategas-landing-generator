@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { scrapeWithBrowser, type ScrapedOffer } from '@/lib/browserless'
 
 // Jina AI Reader - GRATIS, sin API key
 const JINA_READER_URL = 'https://r.jina.ai/'
@@ -13,6 +14,12 @@ interface AdToAnalyze {
   adLibraryUrl?: string
 }
 
+interface PriceOffer {
+  label: string
+  price: number
+  originalPrice?: number
+}
+
 interface AnalyzedCompetitor {
   id: string
   advertiserName: string
@@ -22,11 +29,13 @@ interface AnalyzedCompetitor {
   ctaText: string
   price: number | null
   priceFormatted: string | null
+  allPrices?: PriceOffer[]
   combo: string | null
   gift: string | null
   angle: string | null
   headline: string | null
   cta: string | null
+  source?: 'browserless' | 'jina'
   error?: string
 }
 
@@ -260,13 +269,40 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Maximo 10 competidores por analisis' }, { status: 400 })
     }
 
-    console.log('Analyzing ' + ads.length + ' competitors with Jina AI Reader (FREE)')
+    const hasBrowserless = !!process.env.BROWSERLESS_API_KEY
+    console.log('Analyzing ' + ads.length + ' competitors' + (hasBrowserless ? ' (Browserless + Jina fallback)' : ' (Jina only)'))
 
     // Analyze each landing page in parallel
     const results: AnalyzedCompetitor[] = await Promise.all(
       ads.map(async (ad) => {
         try {
-          // Fetch content using Jina AI (FREE)
+          // Try Browserless first (captures dynamic content/popups)
+          const browserData = await scrapeWithBrowser(ad.landingUrl)
+
+          if (browserData && browserData.prices.length > 0) {
+            console.log('Browserless OK for ' + ad.advertiserName + ': ' + browserData.prices.length + ' prices found')
+
+            return {
+              id: ad.id,
+              advertiserName: ad.advertiserName,
+              landingUrl: ad.landingUrl,
+              adLibraryUrl: ad.adLibraryUrl || '',
+              adText: ad.adText || '',
+              ctaText: ad.ctaText || '',
+              price: browserData.prices[0].price,
+              priceFormatted: '$' + browserData.prices[0].price.toLocaleString('es-CO'),
+              allPrices: browserData.prices,
+              combo: browserData.hasCombo ? 'Si' : null,
+              gift: browserData.giftDescription,
+              angle: null,
+              headline: null,
+              cta: browserData.cta,
+              source: 'browserless' as const,
+            }
+          }
+
+          // Fallback to Jina AI (static content)
+          console.log('Browserless failed for ' + ad.advertiserName + ', trying Jina...')
           const content = await fetchWithJina(ad.landingUrl)
 
           if (!content) {
@@ -288,10 +324,10 @@ export async function POST(request: Request) {
             }
           }
 
-          // Extract info from content
+          // Extract info from Jina content
           const extractedInfo = extractInfoFromContent(content)
 
-          console.log('Analyzed ' + ad.advertiserName + ': price=' + extractedInfo.price)
+          console.log('Jina OK for ' + ad.advertiserName + ': price=' + extractedInfo.price)
 
           return {
             id: ad.id,
@@ -307,6 +343,7 @@ export async function POST(request: Request) {
             angle: extractedInfo.angle || null,
             headline: extractedInfo.headline || null,
             cta: extractedInfo.cta || null,
+            source: 'jina' as const,
           }
         } catch (error: any) {
           console.error('Error analyzing ' + ad.landingUrl + ':', error)
