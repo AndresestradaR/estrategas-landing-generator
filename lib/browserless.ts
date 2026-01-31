@@ -103,18 +103,28 @@ export default async function({ page }) {
 
   // PASO 2: Remover precios tachados del DOM antes de extraer texto
   await page.evaluate(() => {
-    // Elementos HTML de tachado
-    document.querySelectorAll('del, s, strike').forEach(el => el.remove());
+    // Tags HTML de tachado
+    document.querySelectorAll('del, s, strike, ins').forEach(el => el.remove());
 
-    // Elementos con clases de precio anterior
-    document.querySelectorAll('[class*="old-price"], [class*="before-price"], [class*="was-price"], [class*="compare-price"], [class*="regular-price"], [class*="original-price"], [class*="precio-anterior"], [class*="precio-tachado"], [class*="crossed"], [class*="line-through"]').forEach(el => el.remove());
+    // Clases comunes de precio anterior/tachado
+    const oldPriceSelectors = [
+      '[class*="old"]', '[class*="was"]', '[class*="before"]',
+      '[class*="compare"]', '[class*="regular"]', '[class*="original"]',
+      '[class*="tachado"]', '[class*="crossed"]', '[class*="scratch"]',
+      '[class*="previous"]', '[class*="retail"]', '[class*="msrp"]',
+      '[class*="list-price"]', '[class*="sale-price"]:not([class*="current"])',
+      '[data-price-type="old"]', '[data-compare]'
+    ];
+    document.querySelectorAll(oldPriceSelectors.join(',')).forEach(el => el.remove());
 
-    // Elementos con estilo line-through
-    document.querySelectorAll('[class*="price"], [class*="precio"], [class*="valor"]').forEach(el => {
-      const style = window.getComputedStyle(el);
-      if (style.textDecoration.includes('line-through') || style.textDecorationLine.includes('line-through')) {
-        el.remove();
-      }
+    // Estilo line-through en cualquier elemento
+    document.querySelectorAll('*').forEach(el => {
+      try {
+        const style = window.getComputedStyle(el);
+        if (style.textDecoration.includes('line-through')) {
+          el.remove();
+        }
+      } catch (e) {}
     });
   });
 
@@ -122,28 +132,55 @@ export default async function({ page }) {
   const structuredOffers = await page.evaluate(() => {
     const offers = [];
 
-    // Buscar elementos que parezcan opciones de compra
-    const offerSelectors = '[class*="offer"], [class*="option"], [class*="variant"], [class*="package"], [class*="quantity"], [class*="frasco"], [class*="precio"], [class*="plan"]';
+    // Buscar contenedores de opciones de producto
+    const optionSelectors = [
+      '[class*="offer"]', '[class*="option"]', '[class*="variant"]',
+      '[class*="package"]', '[class*="bundle"]', '[class*="quantity-option"]',
+      '[class*="product-option"]', '[class*="price-option"]',
+      '[role="radio"]', '[role="option"]', 'label:has(input[type="radio"])',
+      '[class*="card"]:has([class*="price"])', '[class*="plan"]',
+      '[class*="frasco"]', '[class*="unidad"]'
+    ];
 
-    document.querySelectorAll(offerSelectors).forEach(el => {
+    document.querySelectorAll(optionSelectors.join(',')).forEach(el => {
       const text = el.innerText || "";
 
-      // Patrón: número + (frasco|unidad|mes|paquete) + precio
-      const match = text.match(/(\\d+)\\s*(frasco|unidad|mes|paquete|caja)[s]?[^\\$]*\\$\\s*([\\d.,]+)/i);
-      if (match) {
-        const price = parseInt(match[3].replace(/\\./g, '').replace(/,/g, ''));
-        if (price >= 15000 && price <= 500000) {
-          offers.push({
-            quantity: parseInt(match[1]),
-            unit: match[2],
-            price: price,
-            text: text.substring(0, 100)
-          });
+      // Múltiples patrones para detectar ofertas
+      const patterns = [
+        /(\\d+)\\s*(frasco|unidad|mes|paquete|caja|kit)[es]?.*?\\$\\s*([\\d.,]+)/i,
+        /lleva\\s*(\\d+).*?\\$\\s*([\\d.,]+)/i,
+        /(\\d+)\\s*x.*?\\$\\s*([\\d.,]+)/i
+      ];
+
+      for (const pattern of patterns) {
+        const match = text.match(pattern);
+        if (match) {
+          const priceStr = match[match.length - 1];
+          const price = parseInt(priceStr.replace(/\\./g, '').replace(/,/g, ''));
+          if (price >= 15000 && price <= 500000) {
+            offers.push({
+              quantity: parseInt(match[1]) || 1,
+              unit: match[2] || 'unidad',
+              price: price,
+              text: text.substring(0, 100)
+            });
+          }
+          break;
         }
       }
     });
 
-    return offers;
+    // Deduplicar por precio
+    const unique = [];
+    const seen = new Set();
+    offers.forEach(o => {
+      if (!seen.has(o.price)) {
+        seen.add(o.price);
+        unique.push(o);
+      }
+    });
+
+    return unique.sort((a, b) => a.price - b.price);
   });
 
   // PASO 3: Extraer todos los precios visibles (excluyendo tachados)
@@ -247,19 +284,34 @@ function parseScrapedData(data: any): ScrapedOffer {
   const allText = [data.fullText, data.priceText, data.modalText].filter(Boolean).join(' ')
   const prices: PriceOffer[] = []
 
-  // PRIORIDAD 1: Usar ofertas estructuradas extraídas por Puppeteer
+  // PRIORIDAD 1: Si hay 2+ ofertas estructuradas, usarlas directamente (mejor calidad)
+  if (data.structuredOffers && data.structuredOffers.length >= 2) {
+    console.log('[parseScrapedData] Usando', data.structuredOffers.length, 'ofertas estructuradas')
+    for (const offer of data.structuredOffers) {
+      prices.push({
+        label: `${offer.quantity} ${offer.unit || 'unidad'}`,
+        quantity: offer.quantity || 1,
+        price: offer.price
+      })
+    }
+    // Si tenemos ofertas estructuradas, no necesitamos más
+    prices.sort((a, b) => a.price - b.price)
+    return buildResult(prices, allText, data)
+  }
+
+  // PRIORIDAD 2: Usar ofertas estructuradas + complementar con allPrices
   if (data.structuredOffers && data.structuredOffers.length > 0) {
     for (const offer of data.structuredOffers) {
       prices.push({
-        label: `${offer.quantity} ${offer.unit}`,
-        quantity: offer.quantity,
+        label: `${offer.quantity} ${offer.unit || 'unidad'}`,
+        quantity: offer.quantity || 1,
         price: offer.price
       })
     }
   }
 
-  // PRIORIDAD 2: Usar precios extraídos directamente del DOM (ya filtrados)
-  if (prices.length === 0 && data.allPrices && data.allPrices.length > 0) {
+  // Agregar precios del DOM que no estén ya incluidos
+  if (data.allPrices && data.allPrices.length > 0) {
     for (const price of data.allPrices) {
       if (!prices.find(p => p.price === price)) {
         prices.push({
@@ -321,6 +373,10 @@ function parseScrapedData(data: any): ScrapedOffer {
   // Ordenar por precio
   prices.sort((a, b) => a.price - b.price)
 
+  return buildResult(prices, allText, data)
+}
+
+function buildResult(prices: PriceOffer[], allText: string, data: any): ScrapedOffer {
   // Detectar combos
   const hasCombo = /combo|2x1|3x2|\d+\s*frasco|\d+\s*unidad|\d+\s*mes/i.test(allText)
 
