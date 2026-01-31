@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, Filter, Package, TrendingUp, DollarSign, Loader2, ExternalLink, ChevronLeft, ChevronRight, BarChart3, Flame, ShoppingCart, RefreshCw } from 'lucide-react'
+import { Search, Filter, Package, TrendingUp, DollarSign, Loader2, ChevronLeft, ChevronRight, BarChart3, Flame, ShoppingCart, RefreshCw } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 const API_URL = 'https://product-intelligence-dropi-production.up.railway.app'
@@ -433,17 +433,6 @@ export function ProductExplorer() {
                   </span>
                 </div>
 
-                {/* View in Dropi */}
-                <a
-                  href={`https://app.dropi.co/catalogo/${product.externalId}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="flex items-center justify-center gap-2 w-full py-2 text-sm text-accent hover:bg-accent/10 rounded-lg transition-colors"
-                >
-                  Ver en Dropi
-                  <ExternalLink className="w-4 h-4" />
-                </a>
               </div>
             </div>
           ))}

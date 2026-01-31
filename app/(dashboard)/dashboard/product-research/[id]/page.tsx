@@ -9,15 +9,13 @@ import {
   TrendingUp,
   ShoppingCart,
   Loader2,
-  ExternalLink,
   Calendar,
   BarChart3,
   Boxes,
   Store,
   Tag,
   MapPin,
-  Copy,
-  Search
+  Copy
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import {
@@ -357,31 +355,17 @@ export default function ProductDetailPage() {
               </div>
             </div>
 
-            {/* Dropi Actions */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <a
-                href={`https://app.dropi.co/catalogo?search=${encodeURIComponent(product.name.slice(0, 50))}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent/90 text-background font-medium rounded-lg transition-colors"
-              >
-                <Search className="w-4 h-4" />
-                Buscar en Dropi
-              </a>
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(product.externalId)
-                  toast.success(`ID copiado: ${product.externalId}`)
-                }}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-background hover:bg-background/80 text-text-primary font-medium rounded-lg transition-colors border border-border"
-              >
-                <Copy className="w-4 h-4" />
-                Copiar ID
-              </button>
-            </div>
-            <p className="text-xs text-text-secondary mt-2">
-              Busca en el catálogo de Dropi o copia el ID ({product.externalId}) para buscarlo manualmente
-            </p>
+            {/* Copiar ID */}
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(product.externalId)
+                toast.success(`ID copiado: ${product.externalId}`)
+              }}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-accent text-background font-medium rounded-lg hover:bg-accent/90 transition-colors"
+            >
+              <Copy className="w-4 h-4" />
+              Copiar ID: {product.externalId}
+            </button>
           </div>
         </div>
       </div>
