@@ -35,63 +35,24 @@ export async function scrapeWithBrowser(url: string): Promise<ScrapedOffer | nul
     // Escapar la URL para usarla dentro del código
     const escapedUrl = url.replace(/'/g, "\\'").replace(/"/g, '\\"')
 
-    const response = await fetch(`${BROWSERLESS_URL}?token=${apiKey}`, {
+    // Usar /content endpoint que es más simple y confiable
+    const contentUrl = 'https://chrome.browserless.io/content'
+
+    const response = await fetch(`${contentUrl}?token=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        code: `
-          module.exports = async ({ page }) => {
-            await page.goto('${escapedUrl}', { waitUntil: 'networkidle2', timeout: 15000 });
-
-            // Esperar a que cargue
-            await page.waitForTimeout(2000);
-
-            // Intentar hacer click en botón de comprar
-            const buyButtons = [
-              'button[class*="comprar"]',
-              'button[class*="buy"]',
-              'button[class*="pedir"]',
-              'button[class*="agregar"]',
-              '.add-to-cart',
-              '.btn-buy',
-              '[class*="product-button"]',
-              'button[class*="cart"]'
-            ];
-
-            for (const selector of buyButtons) {
-              try {
-                const btn = await page.$(selector);
-                if (btn) {
-                  await btn.click();
-                  await page.waitForTimeout(2000);
-                  break;
-                }
-              } catch (e) {}
-            }
-
-            // Extraer todo el texto visible
-            const text = await page.evaluate(() => document.body.innerText);
-
-            // Extraer precios específicamente
-            const prices = await page.evaluate(() => {
-              const priceElements = document.querySelectorAll('[class*="price"], [class*="precio"], [class*="valor"], [class*="total"]');
-              return Array.from(priceElements).map(el => el.innerText).join(' | ');
-            });
-
-            // Buscar modal/popup
-            const modalText = await page.evaluate(() => {
-              const modals = document.querySelectorAll('[class*="modal"], [class*="popup"], [class*="drawer"], [role="dialog"]');
-              return Array.from(modals).map(el => el.innerText).join(' | ');
-            });
-
-            return {
-              fullText: text.substring(0, 5000),
-              prices,
-              modalText,
-              url: page.url()
-            };
-          };
-        `
+        url: escapedUrl,
+        gotoOptions: {
+          waitUntil: 'networkidle2',
+          timeout: 20000
+        },
+        waitForSelector: {
+          selector: 'body',
+          timeout: 10000
+        },
+        // Esperar para que cargue contenido dinámico
+        waitForTimeout: 3000
       })
     })
 
@@ -104,13 +65,22 @@ export async function scrapeWithBrowser(url: string): Promise<ScrapedOffer | nul
       return null
     }
 
-    const data = await response.json()
-    console.log('[Browserless] SUCCESS! Response keys:', Object.keys(data))
-    console.log('[Browserless] fullText length:', data.fullText?.length || 0)
-    console.log('[Browserless] prices:', data.prices?.substring(0, 300))
-    console.log('[Browserless] modalText:', data.modalText?.substring(0, 300))
+    // /content devuelve HTML directamente
+    const html = await response.text()
+    console.log('[Browserless] SUCCESS! HTML length:', html.length)
 
-    const result = parseScrapedData(data)
+    // Extraer texto del HTML
+    const textContent = html
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+    console.log('[Browserless] Text content length:', textContent.length)
+    console.log('[Browserless] Text preview:', textContent.substring(0, 500))
+
+    const result = parseScrapedData({ fullText: textContent, prices: '', modalText: '' })
     console.log('[Browserless] Parsed result - prices:', result.prices.length, 'price:', result.price)
 
     return result

@@ -277,9 +277,12 @@ export async function POST(request: Request) {
     console.log('BROWSERLESS_API_KEY:', hasBrowserless ? `YES (${browserlessKey?.substring(0, 8)}...)` : '❌ NOT SET!')
     console.log('Analyzing', ads.length, 'ads with', hasBrowserless ? 'BROWSERLESS' : 'JINA ONLY')
 
-    // Analyze each landing page in parallel
-    const results: AnalyzedCompetitor[] = await Promise.all(
-      ads.map(async (ad) => {
+    // Helper para delay entre requests (evitar rate limit de Browserless)
+    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+    // Analyze each landing page SEQUENTIALLY para evitar rate limit 429
+    const results: AnalyzedCompetitor[] = []
+    for (const ad of ads) {
         console.log(`\n--- Analyzing: ${ad.advertiserName} ---`)
         console.log(`URL: ${ad.landingUrl}`)
 
@@ -297,7 +300,7 @@ export async function POST(request: Request) {
             console.log(`[${ad.advertiserName}] SUCCESS with Browserless: ${browserData.prices.length} prices`)
             console.log(`[${ad.advertiserName}] First price: $${browserData.prices[0].price}`)
 
-            return {
+            results.push({
               id: ad.id,
               advertiserName: ad.advertiserName,
               landingUrl: ad.landingUrl,
@@ -313,7 +316,10 @@ export async function POST(request: Request) {
               headline: null,
               cta: browserData.cta,
               source: 'browserless' as const,
-            }
+            })
+            // Delay para evitar rate limit de Browserless
+            await delay(1500)
+            continue
           }
 
           // Fallback to Jina AI (static content)
@@ -321,7 +327,7 @@ export async function POST(request: Request) {
           const content = await fetchWithJina(ad.landingUrl)
 
           if (!content) {
-            return {
+            results.push({
               id: ad.id,
               advertiserName: ad.advertiserName,
               landingUrl: ad.landingUrl,
@@ -336,7 +342,8 @@ export async function POST(request: Request) {
               headline: null,
               cta: null,
               error: 'No se pudo extraer el contenido',
-            }
+            })
+            continue
           }
 
           // Extract info from Jina content
@@ -344,7 +351,7 @@ export async function POST(request: Request) {
 
           console.log('Jina OK for ' + ad.advertiserName + ': price=' + extractedInfo.price)
 
-          return {
+          results.push({
             id: ad.id,
             advertiserName: ad.advertiserName,
             landingUrl: ad.landingUrl,
@@ -359,10 +366,10 @@ export async function POST(request: Request) {
             headline: extractedInfo.headline || null,
             cta: extractedInfo.cta || null,
             source: 'jina' as const,
-          }
+          })
         } catch (error: any) {
           console.error('Error analyzing ' + ad.landingUrl + ':', error)
-          return {
+          results.push({
             id: ad.id,
             advertiserName: ad.advertiserName,
             landingUrl: ad.landingUrl,
@@ -377,10 +384,13 @@ export async function POST(request: Request) {
             headline: null,
             cta: null,
             error: error.message || 'Error al analizar landing page',
-          }
+          })
         }
-      })
-    )
+
+        // Delay entre requests para evitar rate limit
+        await delay(1000)
+      }
+    }
 
     // Calculate statistics
     const validPrices = results.filter(r => r.price !== null && r.price > 0).map(r => r.price as number)
