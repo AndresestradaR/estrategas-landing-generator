@@ -62,18 +62,21 @@ interface Product {
   updatedAt: string
 }
 
-type DateFilter = '7d' | '15d' | '30d' | '60d' | '90d'
+type DateFilter = '7d' | '15d' | '30d' | '60d' | '90d' | '6m' | '1y' | 'all'
 
-const DATE_FILTERS: { value: DateFilter; label: string; days: number }[] = [
-  { value: '7d', label: '7 días', days: 7 },
-  { value: '15d', label: '15 días', days: 15 },
-  { value: '30d', label: '30 días', days: 30 },
-  { value: '60d', label: '60 días', days: 60 },
-  { value: '90d', label: '90 días', days: 90 },
+const DATE_FILTERS: { value: DateFilter; label: string; days: number | null }[] = [
+  { value: '7d', label: '7d', days: 7 },
+  { value: '15d', label: '15d', days: 15 },
+  { value: '30d', label: '30d', days: 30 },
+  { value: '60d', label: '60d', days: 60 },
+  { value: '90d', label: '90d', days: 90 },
+  { value: '6m', label: '6m', days: 180 },
+  { value: '1y', label: '1 año', days: 365 },
+  { value: 'all', label: 'Todo', days: null },
 ]
 
 // Función para llenar días faltantes con 0
-const fillMissingDays = (historial: HistorialItem[], days: number) => {
+const fillMissingDays = (historial: HistorialItem[], days: number | null) => {
   const result: { date: string; soldUnits: number; salesAmount: number }[] = []
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -83,6 +86,17 @@ const fillMissingDays = (historial: HistorialItem[], days: number) => {
   historial.forEach(h => {
     dataMap.set(h.date.split('T')[0], h)
   })
+
+  // Si days es null, mostrar todo el historial sin llenar gaps
+  if (days === null) {
+    return historial
+      .map(h => ({
+        date: h.date.split('T')[0],
+        soldUnits: h.soldUnits,
+        salesAmount: h.salesAmount
+      }))
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  }
 
   // Llenar todos los días desde hace X días hasta hoy
   for (let i = days - 1; i >= 0; i--) {
