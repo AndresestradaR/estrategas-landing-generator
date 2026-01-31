@@ -19,16 +19,21 @@ export interface ScrapedOffer {
 export async function scrapeWithBrowser(url: string): Promise<ScrapedOffer | null> {
   const apiKey = process.env.BROWSERLESS_API_KEY
 
+  console.log('========== BROWSERLESS DEBUG ==========')
+  console.log('[Browserless] API Key exists:', !!apiKey)
+  console.log('[Browserless] API Key preview:', apiKey ? apiKey.substring(0, 10) + '...' : 'NONE')
+  console.log('[Browserless] Target URL:', url)
+
   if (!apiKey) {
-    console.log('[Browserless] No API key configured')
+    console.log('[Browserless] SKIPPING - No API key!')
     return null
   }
 
   try {
-    console.log('[Browserless] Starting scrape for:', url)
+    console.log('[Browserless] Making request to /function endpoint...')
 
     // Escapar la URL para usarla dentro del código
-    const escapedUrl = url.replace(/'/g, "\\'")
+    const escapedUrl = url.replace(/'/g, "\\'").replace(/"/g, '\\"')
 
     const response = await fetch(`${BROWSERLESS_URL}?token=${apiKey}`, {
       method: 'POST',
@@ -90,21 +95,29 @@ export async function scrapeWithBrowser(url: string): Promise<ScrapedOffer | nul
       })
     })
 
+    console.log('[Browserless] Response status:', response.status)
+
     if (!response.ok) {
       const errorText = await response.text()
-      console.log('[Browserless] ERROR response:', response.status, errorText.substring(0, 300))
+      console.log('[Browserless] ERROR response:', response.status)
+      console.log('[Browserless] Error body:', errorText.substring(0, 500))
       return null
     }
 
     const data = await response.json()
-    console.log('[Browserless] Success, text length:', data.fullText?.length || 0)
-    console.log('[Browserless] Prices raw:', data.prices?.substring(0, 200))
-    console.log('[Browserless] Modal text:', data.modalText?.substring(0, 200))
+    console.log('[Browserless] SUCCESS! Response keys:', Object.keys(data))
+    console.log('[Browserless] fullText length:', data.fullText?.length || 0)
+    console.log('[Browserless] prices:', data.prices?.substring(0, 300))
+    console.log('[Browserless] modalText:', data.modalText?.substring(0, 300))
 
-    return parseScrapedData(data)
+    const result = parseScrapedData(data)
+    console.log('[Browserless] Parsed result - prices:', result.prices.length, 'price:', result.price)
+
+    return result
 
   } catch (error: any) {
-    console.error('[Browserless] Exception:', error.message)
+    console.error('[Browserless] EXCEPTION:', error.message)
+    console.error('[Browserless] Stack:', error.stack?.substring(0, 300))
     return null
   }
 }
