@@ -40,59 +40,57 @@ export async function scrapeWithBrowser(url: string): Promise<ScrapedOffer | nul
 
     const puppeteerCode = `
 export default async function({ page }) {
+  let clickedButton = "none";
+
   await page.goto("${escapedUrl}", { waitUntil: "networkidle2", timeout: 20000 });
   await new Promise(r => setTimeout(r, 2000));
 
   // Buscar y hacer click en botones de compra/oferta
-  const buttonSelectors = [
-    'button:has-text("QUIERO")',
-    'button:has-text("OFERTA")',
-    'button:has-text("COMPRAR")',
-    'button:has-text("PEDIR")',
-    'button:has-text("AGREGAR")',
-    '[class*="btn"]:has-text("QUIERO")',
-    '[class*="btn"]:has-text("OFERTA")',
-    '[class*="button"]:has-text("COMPRAR")',
-    'a:has-text("QUIERO LA OFERTA")',
-    'a:has-text("COMPRAR")',
-    '.add-to-cart',
-    '.btn-buy',
-    '[data-action="add-to-cart"]'
-  ];
+  const keywords = ["QUIERO", "OFERTA", "COMPRAR", "PEDIR", "AGREGAR", "AÑADIR", "VER PRECIO"];
 
-  for (const selector of buttonSelectors) {
-    try {
-      const elements = await page.$$("button, a, [role='button']");
-      for (const el of elements) {
-        const text = await el.evaluate(e => e.innerText || e.textContent || "");
-        if (text.toUpperCase().includes("QUIERO") ||
-            text.toUpperCase().includes("OFERTA") ||
-            text.toUpperCase().includes("COMPRAR") ||
-            text.toUpperCase().includes("PEDIR")) {
-          await el.click().catch(() => {});
-          await new Promise(r => setTimeout(r, 2000));
-          break;
+  try {
+    const elements = await page.$$("button, a, [role='button'], [class*='btn'], [class*='button']");
+
+    for (const el of elements) {
+      try {
+        const text = await el.evaluate(e => (e.innerText || e.textContent || "").toUpperCase());
+
+        for (const keyword of keywords) {
+          if (text.includes(keyword)) {
+            // Hacer click
+            await el.click();
+            clickedButton = text.substring(0, 50);
+            // Esperar a que aparezca el popup/modal
+            await new Promise(r => setTimeout(r, 3000));
+            break;
+          }
         }
-      }
-    } catch (e) {}
-  }
+        if (clickedButton !== "none") break;
+      } catch (e) {}
+    }
+  } catch (e) {}
 
-  // Extraer texto
+  // Extraer texto DESPUÉS del click
   const fullText = await page.evaluate(() => document.body.innerText);
 
   // Extraer precios de elementos específicos
   const priceText = await page.evaluate(() => {
-    const els = document.querySelectorAll('[class*="price"], [class*="precio"], [class*="valor"], [class*="total"], [class*="offer"]');
+    const els = document.querySelectorAll('[class*="price"], [class*="precio"], [class*="valor"], [class*="total"], [class*="offer"], [class*="amount"]');
     return Array.from(els).map(e => e.innerText).join(" | ");
   });
 
-  // Extraer texto de modals/popups
+  // Extraer texto de modals/popups que aparecieron
   const modalText = await page.evaluate(() => {
-    const els = document.querySelectorAll('[class*="modal"], [class*="popup"], [class*="drawer"], [role="dialog"], [class*="offer"]');
+    const els = document.querySelectorAll('[class*="modal"], [class*="popup"], [class*="drawer"], [role="dialog"], [class*="offer"], [class*="overlay"]');
     return Array.from(els).map(e => e.innerText).join(" | ");
   });
 
-  return { fullText: fullText.substring(0, 8000), priceText, modalText };
+  return {
+    fullText: fullText.substring(0, 8000),
+    priceText,
+    modalText,
+    clickedButton
+  };
 }
 `;
 
@@ -114,6 +112,7 @@ export default async function({ page }) {
     // /function devuelve JSON con los datos extraídos
     const data = await response.json()
     console.log('[Browserless] SUCCESS!')
+    console.log('[Browserless] Clicked button:', data.clickedButton || 'none')
     console.log('[Browserless] fullText length:', data.fullText?.length || 0)
     console.log('[Browserless] priceText:', data.priceText?.substring(0, 300))
     console.log('[Browserless] modalText:', data.modalText?.substring(0, 300))
