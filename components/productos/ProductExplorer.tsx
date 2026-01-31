@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { Search, Filter, Package, TrendingUp, DollarSign, Loader2, ExternalLink, ChevronLeft, ChevronRight, BarChart3, Flame, ShoppingCart, RefreshCw } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -37,6 +38,8 @@ interface Category {
 }
 
 export function ProductExplorer() {
+  const router = useRouter()
+
   // State
   const [products, setProducts] = useState<Product[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
@@ -355,7 +358,8 @@ export function ProductExplorer() {
           {products.map((product) => (
             <div
               key={product.id}
-              className="bg-surface rounded-xl border border-border overflow-hidden hover:border-accent/50 transition-colors group"
+              onClick={() => router.push(`/dashboard/product-research/${product.id}`)}
+              className="bg-surface rounded-xl border border-border overflow-hidden hover:border-accent/50 transition-colors group cursor-pointer"
             >
               {/* Image */}
               <div className="aspect-square bg-background relative overflow-hidden">
@@ -434,6 +438,7 @@ export function ProductExplorer() {
                   href={`https://app.dropi.co/catalogo/${product.externalId}`}
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
                   className="flex items-center justify-center gap-2 w-full py-2 text-sm text-accent hover:bg-accent/10 rounded-lg transition-colors"
                 >
                   Ver en Dropi
