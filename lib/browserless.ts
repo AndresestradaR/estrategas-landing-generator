@@ -101,7 +101,24 @@ export default async function({ page }) {
     }
   } catch (e) {}
 
-  // PASO 2: Extraer ofertas estructuradas (cantidad + precio)
+  // PASO 2: Remover precios tachados del DOM antes de extraer texto
+  await page.evaluate(() => {
+    // Elementos HTML de tachado
+    document.querySelectorAll('del, s, strike').forEach(el => el.remove());
+
+    // Elementos con clases de precio anterior
+    document.querySelectorAll('[class*="old-price"], [class*="before-price"], [class*="was-price"], [class*="compare-price"], [class*="regular-price"], [class*="original-price"], [class*="precio-anterior"], [class*="precio-tachado"], [class*="crossed"], [class*="line-through"]').forEach(el => el.remove());
+
+    // Elementos con estilo line-through
+    document.querySelectorAll('[class*="price"], [class*="precio"], [class*="valor"]').forEach(el => {
+      const style = window.getComputedStyle(el);
+      if (style.textDecoration.includes('line-through') || style.textDecorationLine.includes('line-through')) {
+        el.remove();
+      }
+    });
+  });
+
+  // PASO 3: Extraer ofertas estructuradas (cantidad + precio)
   const structuredOffers = await page.evaluate(() => {
     const offers = [];
 
@@ -256,12 +273,17 @@ function parseScrapedData(data: any): ScrapedOffer {
 
   // PRIORIDAD 3: Extraer del texto con regex (última opción)
   if (prices.length === 0) {
-    // Limpiar texto de descuentos
+    // Limpiar texto de descuentos y precios anteriores
     const cleanText = allText
-      .replace(/ahorra[s]?\s*\$?\s*[\d.,]+/gi, '')
-      .replace(/descuento[s]?\s*\$?\s*[\d.,]+/gi, '')
-      .replace(/antes\s*\$?\s*[\d.,]+/gi, '')
-      .replace(/era\s*\$?\s*[\d.,]+/gi, '')
+      .replace(/ahorra[s]?\s*:?\s*\$?\s*[\d.,]+/gi, '')
+      .replace(/descuento[s]?\s*:?\s*\$?\s*[\d.,]+/gi, '')
+      .replace(/antes\s*:?\s*\$?\s*[\d.,]+/gi, '')
+      .replace(/era\s*:?\s*\$?\s*[\d.,]+/gi, '')
+      .replace(/precio\s*anterior\s*:?\s*\$?\s*[\d.,]+/gi, '')
+      .replace(/precio\s*regular\s*:?\s*\$?\s*[\d.,]+/gi, '')
+      .replace(/precio\s*original\s*:?\s*\$?\s*[\d.,]+/gi, '')
+      .replace(/regular\s*:?\s*\$?\s*[\d.,]+/gi, '')
+      .replace(/\$[\d.,]+\s*(?:antes|tachado|regular|original)/gi, '')
       .replace(/-\s*\$[\d.,]+/g, '')
 
     // Buscar ofertas estructuradas en el texto
