@@ -269,11 +269,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Maximo 10 competidores por analisis' }, { status: 400 })
     }
 
-    const hasBrowserless = !!process.env.BROWSERLESS_API_KEY
-    console.log('=== COMPETITOR ANALYSIS START ===')
-    console.log('Ads to analyze:', ads.length)
-    console.log('BROWSERLESS_API_KEY configured:', hasBrowserless ? 'YES' : 'NO')
-    console.log('Mode:', hasBrowserless ? 'Browserless + Jina fallback' : 'Jina only')
+    const browserlessKey = process.env.BROWSERLESS_API_KEY
+    const hasBrowserless = !!browserlessKey
+
+    // LOG MUY VISIBLE - Este DEBE aparecer en Vercel
+    console.log('🚀🚀🚀 COMPETITOR ANALYZE API CALLED 🚀🚀🚀')
+    console.log('BROWSERLESS_API_KEY:', hasBrowserless ? `YES (${browserlessKey?.substring(0, 8)}...)` : '❌ NOT SET!')
+    console.log('Analyzing', ads.length, 'ads with', hasBrowserless ? 'BROWSERLESS' : 'JINA ONLY')
 
     // Analyze each landing page in parallel
     const results: AnalyzedCompetitor[] = await Promise.all(
