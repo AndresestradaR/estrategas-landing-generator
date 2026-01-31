@@ -30,9 +30,31 @@ interface AnalyzedCompetitor {
   error?: string
 }
 
+// Helper to clean text by removing discount/savings sections
+function removeDiscountSections(text: string): string {
+  // Remove sections that mention savings/discounts - these contain misleading prices
+  const discountPatterns = [
+    /ahorr[ao]s?\s*(?:de\s*)?\$?\s*\d{1,3}(?:[.,]\d{3})*/gi,  // "ahorra $49.100", "ahorras de $30.000"
+    /descuento\s*(?:de\s*)?\$?\s*\d{1,3}(?:[.,]\d{3})*/gi,    // "descuento $49.100"
+    /\d+%\s*off/gi,                                             // "50% off"
+    /antes\s*\$?\s*\d{1,3}(?:[.,]\d{3})*/gi,                   // "antes $129.900"
+    /precio\s*anterior\s*\$?\s*\d{1,3}(?:[.,]\d{3})*/gi,       // "precio anterior $129.900"
+    /te\s*ahorras\s*\$?\s*\d{1,3}(?:[.,]\d{3})*/gi,            // "te ahorras $49.100"
+  ]
+
+  let cleaned = text
+  for (const pattern of discountPatterns) {
+    cleaned = cleaned.replace(pattern, ' ')
+  }
+  return cleaned
+}
+
 // Helper to extract price from text using regex
 function extractPriceFromText(text: string): { price: number | null, priceFormatted: string | null } {
   if (!text) return { price: null, priceFormatted: null }
+
+  // First, clean the text by removing discount/savings mentions
+  const cleanedText = removeDiscountSections(text)
 
   // Pattern for Colombian/LATAM prices: $89.900, $149,900, COP 89900, etc.
   const patterns = [
@@ -41,12 +63,11 @@ function extractPriceFromText(text: string): { price: number | null, priceFormat
     /(\d{1,3}(?:[.,]\d{3})*)\s*(?:COP|pesos)/gi, // 89.900 COP
   ]
 
-  const prices: number[] = []
-  const formattedPrices: string[] = []
+  const prices: { num: number, formatted: string }[] = []
 
   for (const pattern of patterns) {
     let match
-    while ((match = pattern.exec(text)) !== null) {
+    while ((match = pattern.exec(cleanedText)) !== null) {
       const fullMatch = match[0]
       const numPart = match[1]
 
@@ -54,21 +75,38 @@ function extractPriceFromText(text: string): { price: number | null, priceFormat
       const cleaned = numPart.replace(/[.,]/g, '')
       const num = parseInt(cleaned, 10)
 
-      // Valid price range for LATAM ecommerce (5,000 to 5,000,000)
-      if (num >= 5000 && num <= 5000000) {
-        prices.push(num)
-        formattedPrices.push(fullMatch)
+      // Valid price range for LATAM dropshipping (15,000 to 500,000 COP)
+      // This filters out small discount amounts and unrealistic prices
+      if (num >= 15000 && num <= 500000) {
+        prices.push({ num, formatted: fullMatch })
       }
     }
   }
 
   if (prices.length === 0) return { price: null, priceFormatted: null }
 
-  // Return the lowest price (usually the sale price)
-  const minIndex = prices.indexOf(Math.min(...prices))
+  // Sort prices from lowest to highest
+  prices.sort((a, b) => a.num - b.num)
+
+  // Smart selection: if lowest price is suspiciously low compared to next price,
+  // it's probably a discount amount that slipped through - take the second one
+  if (prices.length >= 2) {
+    const lowest = prices[0].num
+    const secondLowest = prices[1].num
+
+    // If lowest is less than 60% of second lowest, it's likely a discount/savings amount
+    if (lowest < secondLowest * 0.6) {
+      return {
+        price: secondLowest,
+        priceFormatted: prices[1].formatted
+      }
+    }
+  }
+
+  // Return the lowest valid price
   return {
-    price: prices[minIndex],
-    priceFormatted: formattedPrices[minIndex]
+    price: prices[0].num,
+    priceFormatted: prices[0].formatted
   }
 }
 
