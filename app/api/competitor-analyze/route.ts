@@ -270,17 +270,30 @@ export async function POST(request: Request) {
     }
 
     const hasBrowserless = !!process.env.BROWSERLESS_API_KEY
-    console.log('Analyzing ' + ads.length + ' competitors' + (hasBrowserless ? ' (Browserless + Jina fallback)' : ' (Jina only)'))
+    console.log('=== COMPETITOR ANALYSIS START ===')
+    console.log('Ads to analyze:', ads.length)
+    console.log('BROWSERLESS_API_KEY configured:', hasBrowserless ? 'YES' : 'NO')
+    console.log('Mode:', hasBrowserless ? 'Browserless + Jina fallback' : 'Jina only')
 
     // Analyze each landing page in parallel
     const results: AnalyzedCompetitor[] = await Promise.all(
       ads.map(async (ad) => {
+        console.log(`\n--- Analyzing: ${ad.advertiserName} ---`)
+        console.log(`URL: ${ad.landingUrl}`)
+
         try {
           // Try Browserless first (captures dynamic content/popups)
+          console.log(`[${ad.advertiserName}] Trying Browserless...`)
           const browserData = await scrapeWithBrowser(ad.landingUrl)
 
+          console.log(`[${ad.advertiserName}] Browserless result:`, browserData ? 'Got data' : 'NULL')
+          if (browserData) {
+            console.log(`[${ad.advertiserName}] Browserless prices:`, browserData.prices.length)
+          }
+
           if (browserData && browserData.prices.length > 0) {
-            console.log('Browserless OK for ' + ad.advertiserName + ': ' + browserData.prices.length + ' prices found')
+            console.log(`[${ad.advertiserName}] SUCCESS with Browserless: ${browserData.prices.length} prices`)
+            console.log(`[${ad.advertiserName}] First price: $${browserData.prices[0].price}`)
 
             return {
               id: ad.id,
@@ -302,7 +315,7 @@ export async function POST(request: Request) {
           }
 
           // Fallback to Jina AI (static content)
-          console.log('Browserless failed for ' + ad.advertiserName + ', trying Jina...')
+          console.log(`[${ad.advertiserName}] Browserless failed/no prices, trying Jina...`)
           const content = await fetchWithJina(ad.landingUrl)
 
           if (!content) {
