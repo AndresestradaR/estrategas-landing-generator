@@ -17,7 +17,6 @@ import {
   Tag,
   MapPin
 } from 'lucide-react'
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 
 const API_URL = 'https://product-intelligence-dropi-production.up.railway.app'
 
@@ -72,6 +71,7 @@ export default function ProductDetailPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [dateFilter, setDateFilter] = useState<DateFilter>('30d')
+  const [hoveredBar, setHoveredBar] = useState<number | null>(null)
 
   useEffect(() => {
     if (productId) {
@@ -119,13 +119,16 @@ export default function ProductDetailPage() {
   }, [product?.historial, dateFilter])
 
   const chartData = useMemo(() => {
-    return filteredHistorial.map(h => ({
+    const data = filteredHistorial.map(h => ({
       date: new Date(h.date).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }),
       fullDate: h.date,
       ventas: h.soldUnits,
       stock: h.stock,
       facturacion: h.salesAmount
     }))
+
+    const maxVentas = Math.max(...data.map(d => d.ventas), 1)
+    return data.map(d => ({ ...d, percentage: (d.ventas / maxVentas) * 100 }))
   }, [filteredHistorial])
 
   const periodStats = useMemo(() => {
@@ -330,14 +333,14 @@ export default function ProductDetailPage() {
 
       {/* Sales Chart */}
       <div className="bg-surface rounded-xl border border-border p-6">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
           <div className="flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-accent" />
             <h2 className="text-lg font-semibold text-text-primary">Historial de Ventas</h2>
           </div>
 
           {/* Date Filters */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {DATE_FILTERS.map(filter => (
               <button
                 key={filter.value}
@@ -376,59 +379,53 @@ export default function ProductDetailPage() {
           </div>
         </div>
 
-        {/* Chart */}
+        {/* Chart - Simple Bar Chart with CSS */}
         {chartData.length > 0 ? (
-          <div className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorVentas" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
-                <XAxis
-                  dataKey="date"
-                  stroke="#9ca3af"
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <YAxis
-                  stroke="#9ca3af"
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(value) => formatNumber(value)}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#1f2937',
-                    border: '1px solid #374151',
-                    borderRadius: '8px',
-                    color: '#f9fafb'
-                  }}
-                  formatter={(value: number, name: string) => {
-                    if (name === 'ventas') return [formatNumber(value), 'Ventas']
-                    if (name === 'facturacion') return [formatCurrency(value), 'Facturación']
-                    return [formatNumber(value), name]
-                  }}
-                  labelFormatter={(label) => `Fecha: ${label}`}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="ventas"
-                  stroke="#10b981"
-                  strokeWidth={2}
-                  fillOpacity={1}
-                  fill="url(#colorVentas)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+          <div className="relative">
+            {/* Tooltip */}
+            {hoveredBar !== null && chartData[hoveredBar] && (
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm z-10 pointer-events-none">
+                <p className="text-white font-medium">{chartData[hoveredBar].date}</p>
+                <p className="text-green-400">Ventas: {formatNumber(chartData[hoveredBar].ventas)}</p>
+                <p className="text-gray-400">Facturación: {formatCurrency(chartData[hoveredBar].facturacion)}</p>
+              </div>
+            )}
+
+            {/* Bar Chart */}
+            <div className="h-[250px] flex items-end gap-1 pt-8">
+              {chartData.map((item, index) => (
+                <div
+                  key={index}
+                  className="flex-1 flex flex-col items-center justify-end h-full group cursor-pointer"
+                  onMouseEnter={() => setHoveredBar(index)}
+                  onMouseLeave={() => setHoveredBar(null)}
+                >
+                  {/* Bar */}
+                  <div
+                    className={`w-full rounded-t transition-all duration-200 ${
+                      hoveredBar === index ? 'bg-green-400' : 'bg-green-500/70'
+                    }`}
+                    style={{ height: `${Math.max(item.percentage, 2)}%` }}
+                  />
+                  {/* Label - show every nth label based on data length */}
+                  {(chartData.length <= 15 || index % Math.ceil(chartData.length / 10) === 0) && (
+                    <span className="text-[10px] text-text-secondary mt-2 rotate-[-45deg] origin-top-left whitespace-nowrap">
+                      {item.date}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Y-axis labels */}
+            <div className="absolute left-0 top-8 bottom-8 flex flex-col justify-between text-xs text-text-secondary pointer-events-none">
+              <span>{formatNumber(Math.max(...chartData.map(d => d.ventas)))}</span>
+              <span>{formatNumber(Math.round(Math.max(...chartData.map(d => d.ventas)) / 2))}</span>
+              <span>0</span>
+            </div>
           </div>
         ) : (
-          <div className="h-[300px] flex items-center justify-center">
+          <div className="h-[250px] flex items-center justify-center">
             <div className="text-center">
               <Calendar className="w-12 h-12 text-text-secondary/30 mx-auto mb-4" />
               <p className="text-text-secondary">No hay datos de historial para este período</p>
