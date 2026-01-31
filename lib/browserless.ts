@@ -2,6 +2,7 @@ const BROWSERLESS_URL = 'https://chrome.browserless.io/function'
 
 interface PriceOffer {
   label: string
+  quantity: number
   price: number
   originalPrice?: number
 }
@@ -14,6 +15,7 @@ export interface ScrapedOffer {
   giftDescription: string | null
   cta: string | null
   fullText: string
+  clickedButton: string
 }
 
 export async function scrapeWithBrowser(url: string): Promise<ScrapedOffer | null> {
@@ -32,69 +34,162 @@ export async function scrapeWithBrowser(url: string): Promise<ScrapedOffer | nul
   try {
     console.log('[Browserless] Making request to /function endpoint...')
 
-    // Escapar la URL para usarla dentro del código
     const escapedUrl = url.replace(/'/g, "\\'").replace(/"/g, '\\"')
-
-    // Usar /function endpoint con código Puppeteer para hacer click en botones
-    const functionUrl = 'https://chrome.browserless.io/function'
 
     const puppeteerCode = `
 export default async function({ page }) {
   let clickedButton = "none";
+  let clickSuccess = false;
 
-  await page.goto("${escapedUrl}", { waitUntil: "networkidle2", timeout: 20000 });
+  await page.goto("${escapedUrl}", { waitUntil: "networkidle2", timeout: 25000 });
   await new Promise(r => setTimeout(r, 2000));
 
-  // Buscar y hacer click en botones de compra/oferta
-  const keywords = ["QUIERO", "OFERTA", "COMPRAR", "PEDIR", "AGREGAR", "AÑADIR", "VER PRECIO"];
+  // PASO 1: Buscar y hacer click en botones de compra
+  const buttonKeywords = ["QUIERO", "OFERTA", "COMPRAR", "PEDIR", "AGREGAR", "AÑADIR", "VER PRECIO", "VER OFERTA", "OBTENER", "ORDENAR"];
 
   try {
-    const elements = await page.$$("button, a, [role='button'], [class*='btn'], [class*='button']");
+    // Selectores específicos para botones de compra
+    const buttonSelectors = [
+      "button",
+      "a[href*='cart']",
+      "a[href*='checkout']",
+      "[role='button']",
+      "[class*='btn']",
+      "[class*='button']",
+      "[class*='cta']",
+      "[class*='buy']",
+      "[class*='comprar']",
+      "[class*='pedir']",
+      "[class*='add-to-cart']",
+      "[data-action='buy']",
+      "[data-action='add-to-cart']",
+      "form[action*='cart'] button",
+      ".product-form button"
+    ];
 
-    for (const el of elements) {
+    for (const selector of buttonSelectors) {
+      if (clickSuccess) break;
+
       try {
-        const text = await el.evaluate(e => (e.innerText || e.textContent || "").toUpperCase());
+        const elements = await page.$$(selector);
 
-        for (const keyword of keywords) {
-          if (text.includes(keyword)) {
-            // Hacer click
-            await el.click();
-            clickedButton = text.substring(0, 50);
-            // Esperar a que aparezca el popup/modal
-            await new Promise(r => setTimeout(r, 3000));
-            break;
-          }
+        for (const el of elements) {
+          try {
+            const text = await el.evaluate(e => (e.innerText || e.textContent || "").toUpperCase().trim());
+
+            for (const keyword of buttonKeywords) {
+              if (text.includes(keyword) && text.length < 100) {
+                const isVisible = await el.evaluate(e => {
+                  const style = window.getComputedStyle(e);
+                  return style.display !== 'none' && style.visibility !== 'hidden' && e.offsetParent !== null;
+                });
+
+                if (isVisible) {
+                  await el.click();
+                  clickedButton = text.substring(0, 50);
+                  clickSuccess = true;
+                  // Esperar 4 segundos para que cargue el modal/popup
+                  await new Promise(r => setTimeout(r, 4000));
+                  break;
+                }
+              }
+            }
+            if (clickSuccess) break;
+          } catch (e) {}
         }
-        if (clickedButton !== "none") break;
       } catch (e) {}
     }
   } catch (e) {}
 
-  // Extraer texto DESPUÉS del click
+  // PASO 2: Extraer ofertas estructuradas (cantidad + precio)
+  const structuredOffers = await page.evaluate(() => {
+    const offers = [];
+
+    // Buscar elementos que parezcan opciones de compra
+    const offerSelectors = '[class*="offer"], [class*="option"], [class*="variant"], [class*="package"], [class*="quantity"], [class*="frasco"], [class*="precio"], [class*="plan"]';
+
+    document.querySelectorAll(offerSelectors).forEach(el => {
+      const text = el.innerText || "";
+
+      // Patrón: número + (frasco|unidad|mes|paquete) + precio
+      const match = text.match(/(\\d+)\\s*(frasco|unidad|mes|paquete|caja)[s]?[^\\$]*\\$\\s*([\\d.,]+)/i);
+      if (match) {
+        const price = parseInt(match[3].replace(/\\./g, '').replace(/,/g, ''));
+        if (price >= 15000 && price <= 500000) {
+          offers.push({
+            quantity: parseInt(match[1]),
+            unit: match[2],
+            price: price,
+            text: text.substring(0, 100)
+          });
+        }
+      }
+    });
+
+    return offers;
+  });
+
+  // PASO 3: Extraer todos los precios visibles (excluyendo tachados)
+  const allPrices = await page.evaluate(() => {
+    const prices = [];
+
+    // Selectores de precio
+    const priceSelectors = '[class*="price"]:not([class*="old"]):not([class*="before"]):not([class*="compare"]), [class*="precio"]:not([class*="anterior"]), [class*="valor"], [class*="total"], [class*="amount"], [class*="cost"]';
+
+    document.querySelectorAll(priceSelectors).forEach(el => {
+      // Ignorar elementos tachados
+      const style = window.getComputedStyle(el);
+      if (style.textDecoration.includes('line-through')) return;
+
+      // Ignorar si está dentro de del, s, o tiene clase de precio viejo
+      if (el.closest('del, s, strike, [class*="old"], [class*="before"], [class*="tachado"], [class*="compare"], [class*="was"]')) return;
+
+      const text = el.innerText || "";
+
+      // Ignorar si contiene palabras de descuento
+      if (/ahorra|descuento|antes|era|was|save/i.test(text)) return;
+
+      // Extraer precios
+      const matches = text.matchAll(/\\$\\s*([\\d]{1,3}(?:[.,]\\d{3})*)/g);
+      for (const match of matches) {
+        const price = parseInt(match[1].replace(/\\./g, '').replace(/,/g, ''));
+        if (price >= 15000 && price <= 500000) {
+          prices.push(price);
+        }
+      }
+    });
+
+    return [...new Set(prices)].sort((a, b) => a - b);
+  });
+
+  // PASO 4: Extraer texto completo
   const fullText = await page.evaluate(() => document.body.innerText);
 
-  // Extraer precios de elementos específicos
-  const priceText = await page.evaluate(() => {
-    const els = document.querySelectorAll('[class*="price"], [class*="precio"], [class*="valor"], [class*="total"], [class*="offer"], [class*="amount"]');
+  // PASO 5: Extraer texto de modals/popups
+  const modalText = await page.evaluate(() => {
+    const els = document.querySelectorAll('[class*="modal"], [class*="popup"], [class*="drawer"], [role="dialog"], [class*="overlay"][style*="visible"], [class*="lightbox"]');
     return Array.from(els).map(e => e.innerText).join(" | ");
   });
 
-  // Extraer texto de modals/popups que aparecieron
-  const modalText = await page.evaluate(() => {
-    const els = document.querySelectorAll('[class*="modal"], [class*="popup"], [class*="drawer"], [role="dialog"], [class*="offer"], [class*="overlay"]');
+  // PASO 6: Extraer texto de elementos de precio
+  const priceText = await page.evaluate(() => {
+    const els = document.querySelectorAll('[class*="price"], [class*="precio"], [class*="offer"], [class*="total"]');
     return Array.from(els).map(e => e.innerText).join(" | ");
   });
 
   return {
-    fullText: fullText.substring(0, 8000),
+    fullText: fullText.substring(0, 10000),
     priceText,
     modalText,
-    clickedButton
+    structuredOffers,
+    allPrices,
+    clickedButton,
+    clickSuccess
   };
 }
 `;
 
-    const response = await fetch(`${functionUrl}?token=${apiKey}`, {
+    const response = await fetch(`${BROWSERLESS_URL}?token=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code: puppeteerCode })
@@ -109,20 +204,18 @@ export default async function({ page }) {
       return null
     }
 
-    // /function devuelve JSON con los datos extraídos
     const data = await response.json()
     console.log('[Browserless] SUCCESS!')
     console.log('[Browserless] Clicked button:', data.clickedButton || 'none')
+    console.log('[Browserless] Click success:', data.clickSuccess)
+    console.log('[Browserless] Structured offers:', JSON.stringify(data.structuredOffers || []))
+    console.log('[Browserless] All prices:', JSON.stringify(data.allPrices || []))
     console.log('[Browserless] fullText length:', data.fullText?.length || 0)
     console.log('[Browserless] priceText:', data.priceText?.substring(0, 300))
     console.log('[Browserless] modalText:', data.modalText?.substring(0, 300))
 
-    const result = parseScrapedData({
-      fullText: data.fullText || '',
-      prices: data.priceText || '',
-      modalText: data.modalText || ''
-    })
-    console.log('[Browserless] Parsed result - prices:', result.prices.length, 'price:', result.price)
+    const result = parseScrapedData(data)
+    console.log('[Browserless] Final parsed prices:', result.prices.length, 'main price:', result.price)
 
     return result
 
@@ -134,39 +227,83 @@ export default async function({ page }) {
 }
 
 function parseScrapedData(data: any): ScrapedOffer {
-  const allText = [data.fullText, data.prices, data.modalText].filter(Boolean).join(' ')
+  const allText = [data.fullText, data.priceText, data.modalText].filter(Boolean).join(' ')
+  const prices: PriceOffer[] = []
 
-  // Limpiar texto de descuentos antes de buscar precios
-  const cleanText = allText
-    .replace(/ahorra[s]?\s*\$?\s*[\d.,]+/gi, '')
-    .replace(/descuento[s]?\s*\$?\s*[\d.,]+/gi, '')
-    .replace(/-\s*\$[\d.,]+/g, '')
-    .replace(/antes\s*\$?\s*[\d.,]+/gi, '')
-    .replace(/te\s*ahorras\s*\$?\s*[\d.,]+/gi, '')
+  // PRIORIDAD 1: Usar ofertas estructuradas extraídas por Puppeteer
+  if (data.structuredOffers && data.structuredOffers.length > 0) {
+    for (const offer of data.structuredOffers) {
+      prices.push({
+        label: `${offer.quantity} ${offer.unit}`,
+        quantity: offer.quantity,
+        price: offer.price
+      })
+    }
+  }
 
-  // Extraer precios
-  const priceRegex = /\$\s*([\d]{1,3}(?:[.,]\d{3})*)/g
-  const prices: number[] = []
-  let match
-
-  while ((match = priceRegex.exec(cleanText)) !== null) {
-    const price = parseInt(match[1].replace(/\./g, '').replace(/,/g, ''))
-    if (price >= 15000 && price <= 500000) {
-      if (!prices.includes(price)) {
-        prices.push(price)
+  // PRIORIDAD 2: Usar precios extraídos directamente del DOM (ya filtrados)
+  if (prices.length === 0 && data.allPrices && data.allPrices.length > 0) {
+    for (const price of data.allPrices) {
+      if (!prices.find(p => p.price === price)) {
+        prices.push({
+          label: 'Precio',
+          quantity: 1,
+          price: price
+        })
       }
     }
   }
 
-  prices.sort((a, b) => a - b)
+  // PRIORIDAD 3: Extraer del texto con regex (última opción)
+  if (prices.length === 0) {
+    // Limpiar texto de descuentos
+    const cleanText = allText
+      .replace(/ahorra[s]?\s*\$?\s*[\d.,]+/gi, '')
+      .replace(/descuento[s]?\s*\$?\s*[\d.,]+/gi, '')
+      .replace(/antes\s*\$?\s*[\d.,]+/gi, '')
+      .replace(/era\s*\$?\s*[\d.,]+/gi, '')
+      .replace(/-\s*\$[\d.,]+/g, '')
 
-  console.log('[Browserless] Parsed prices:', prices)
+    // Buscar ofertas estructuradas en el texto
+    const offerPattern = /(\d+)\s*(frasco|unidad|mes|paquete|caja)[s]?[^\$]*\$\s*([\d.,]+)/gi
+    let match
+    while ((match = offerPattern.exec(cleanText)) !== null) {
+      const price = parseInt(match[3].replace(/\./g, '').replace(/,/g, ''))
+      if (price >= 15000 && price <= 500000) {
+        prices.push({
+          label: `${match[1]} ${match[2]}`,
+          quantity: parseInt(match[1]),
+          price: price
+        })
+      }
+    }
+
+    // Si aún no hay precios, buscar precios sueltos
+    if (prices.length === 0) {
+      const pricePattern = /\$\s*([\d]{1,3}(?:[.,]\d{3})*)/g
+      while ((match = pricePattern.exec(cleanText)) !== null) {
+        const price = parseInt(match[1].replace(/\./g, '').replace(/,/g, ''))
+        if (price >= 15000 && price <= 500000) {
+          if (!prices.find(p => p.price === price)) {
+            prices.push({
+              label: 'Precio',
+              quantity: 1,
+              price: price
+            })
+          }
+        }
+      }
+    }
+  }
+
+  // Ordenar por precio
+  prices.sort((a, b) => a.price - b.price)
 
   // Detectar combos
   const hasCombo = /combo|2x1|3x2|\d+\s*frasco|\d+\s*unidad|\d+\s*mes/i.test(allText)
 
   // Detectar regalos
-  const giftMatch = allText.match(/regalo[:\s]*([^,.\n]{3,30})|gratis[:\s]*([^,.\n]{3,30})|incluye[:\s]*([^,.\n]{3,30})/i)
+  const giftMatch = allText.match(/regalo[:\s]*([^,.\n]{3,40})|gratis[:\s]*([^,.\n]{3,40})|incluye[:\s]*([^,.\n]{3,40})/i)
   const hasGift = /regalo|gratis|incluye|bonus|env[ií]o\s*gratis/i.test(allText)
   const giftDescription = giftMatch ? (giftMatch[1] || giftMatch[2] || giftMatch[3])?.trim() || null : null
 
@@ -174,12 +311,13 @@ function parseScrapedData(data: any): ScrapedOffer {
   const ctaMatch = allText.match(/pedir\s*ahora|comprar\s*ahora|agregar\s*al\s*carrito|pagar\s*ahora|lo\s*quiero/i)
 
   return {
-    price: prices[0] || null,
-    prices: prices.map(p => ({ label: 'Precio', price: p })),
+    price: prices.length > 0 ? prices[0].price : null,
+    prices: prices,
     hasCombo,
     hasGift,
     giftDescription,
     cta: ctaMatch ? ctaMatch[0] : null,
-    fullText: allText.substring(0, 2000)
+    fullText: allText.substring(0, 2000),
+    clickedButton: data.clickedButton || 'none'
   }
 }
