@@ -27,9 +27,11 @@ interface Product {
 interface Stats {
   total_productos: number
   productos_con_ventas: number
-  total_vendido_30d: number
-  categorias: number
-  top_categorias: Array<{ name: string; count: number }>
+  ventas_total: number
+  ventas_promedio_30d: number
+  precio_promedio: number
+  top_100_ventas: number
+  top_categorias: Array<{ categoria: string; ventas_30d: number }>
 }
 
 interface Category {
@@ -89,7 +91,7 @@ export function ProductExplorer() {
     try {
       const res = await fetch(`${API_URL}/api/categorias`)
       const data = await res.json()
-      setCategories(data.categorias || [])
+      setCategories(Array.isArray(data) ? data : [])
     } catch (err) {
       console.error('Error loading categories:', err)
     }
@@ -174,16 +176,16 @@ export function ProductExplorer() {
           <div className="bg-surface rounded-xl border border-border p-4">
             <div className="flex items-center gap-2 text-text-secondary mb-1">
               <Flame className="w-4 h-4" />
-              <span className="text-sm">Vendidos (30d)</span>
+              <span className="text-sm">Ventas Totales</span>
             </div>
-            <p className="text-2xl font-bold text-orange-500">{formatNumber(stats.total_vendido_30d)}</p>
+            <p className="text-2xl font-bold text-orange-500">{formatNumber(stats.ventas_total)}</p>
           </div>
           <div className="bg-surface rounded-xl border border-border p-4">
             <div className="flex items-center gap-2 text-text-secondary mb-1">
               <BarChart3 className="w-4 h-4" />
-              <span className="text-sm">Categorías</span>
+              <span className="text-sm">Top 100+ ventas</span>
             </div>
-            <p className="text-2xl font-bold text-purple-500">{stats.categorias}</p>
+            <p className="text-2xl font-bold text-purple-500">{formatNumber(stats.top_100_ventas)}</p>
           </div>
         </div>
       )}
