@@ -17,6 +17,15 @@ import {
   Tag,
   MapPin
 } from 'lucide-react'
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid
+} from 'recharts'
 
 const API_URL = 'https://product-intelligence-dropi-production.up.railway.app'
 
@@ -54,13 +63,67 @@ interface Product {
 
 type DateFilter = '7d' | '15d' | '30d' | '60d' | '90d'
 
-const DATE_FILTERS: { value: DateFilter; label: string }[] = [
-  { value: '7d', label: '7 días' },
-  { value: '15d', label: '15 días' },
-  { value: '30d', label: '30 días' },
-  { value: '60d', label: '60 días' },
-  { value: '90d', label: '90 días' },
+const DATE_FILTERS: { value: DateFilter; label: string; days: number }[] = [
+  { value: '7d', label: '7 días', days: 7 },
+  { value: '15d', label: '15 días', days: 15 },
+  { value: '30d', label: '30 días', days: 30 },
+  { value: '60d', label: '60 días', days: 60 },
+  { value: '90d', label: '90 días', days: 90 },
 ]
+
+// Función para llenar días faltantes con 0
+const fillMissingDays = (historial: HistorialItem[], days: number) => {
+  const result: { date: string; soldUnits: number; salesAmount: number }[] = []
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  // Crear mapa de datos existentes por fecha
+  const dataMap = new Map<string, HistorialItem>()
+  historial.forEach(h => {
+    dataMap.set(h.date.split('T')[0], h)
+  })
+
+  // Llenar todos los días desde hace X días hasta hoy
+  for (let i = days - 1; i >= 0; i--) {
+    const date = new Date(today)
+    date.setDate(date.getDate() - i)
+    const dateStr = date.toISOString().split('T')[0]
+
+    const existing = dataMap.get(dateStr)
+    if (existing) {
+      result.push({
+        date: dateStr,
+        soldUnits: existing.soldUnits,
+        salesAmount: existing.salesAmount
+      })
+    } else {
+      result.push({
+        date: dateStr,
+        soldUnits: 0,
+        salesAmount: 0
+      })
+    }
+  }
+
+  return result
+}
+
+// Formatear fecha para el eje X
+const formatDateShort = (dateStr: string) => {
+  const date = new Date(dateStr + 'T00:00:00')
+  return date.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })
+}
+
+// Formatear fecha para el tooltip
+const formatDateFull = (dateStr: string) => {
+  const date = new Date(dateStr + 'T00:00:00')
+  return date.toLocaleDateString('es-CO', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric'
+  })
+}
 
 export default function ProductDetailPage() {
   const params = useParams()
@@ -71,7 +134,6 @@ export default function ProductDetailPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [dateFilter, setDateFilter] = useState<DateFilter>('30d')
-  const [hoveredBar, setHoveredBar] = useState<number | null>(null)
 
   useEffect(() => {
     if (productId) {
@@ -99,47 +161,22 @@ export default function ProductDetailPage() {
     }
   }
 
-  const filteredHistorial = useMemo(() => {
-    if (!product?.historial) return []
-
-    const daysMap: Record<DateFilter, number> = {
-      '7d': 7,
-      '15d': 15,
-      '30d': 30,
-      '60d': 60,
-      '90d': 90
-    }
-    const days = daysMap[dateFilter]
-    const now = new Date()
-    const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
-
-    return product.historial
-      .filter(h => new Date(h.date) >= cutoff)
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-  }, [product?.historial, dateFilter])
+  const selectedFilter = DATE_FILTERS.find(f => f.value === dateFilter) || DATE_FILTERS[2]
 
   const chartData = useMemo(() => {
-    const data = filteredHistorial.map(h => ({
-      date: new Date(h.date).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' }),
-      fullDate: h.date,
-      ventas: h.soldUnits,
-      stock: h.stock,
-      facturacion: h.salesAmount
-    }))
-
-    const maxVentas = Math.max(...data.map(d => d.ventas), 1)
-    return data.map(d => ({ ...d, percentage: (d.ventas / maxVentas) * 100 }))
-  }, [filteredHistorial])
+    if (!product?.historial) return []
+    return fillMissingDays(product.historial, selectedFilter.days)
+  }, [product?.historial, selectedFilter.days])
 
   const periodStats = useMemo(() => {
-    if (!filteredHistorial.length) return { total: 0, promedio: 0, facturacion: 0 }
+    if (!chartData.length) return { total: 0, promedio: 0, facturacion: 0 }
 
-    const total = filteredHistorial.reduce((sum, h) => sum + h.soldUnits, 0)
-    const facturacion = filteredHistorial.reduce((sum, h) => sum + h.salesAmount, 0)
-    const promedio = Math.round(total / filteredHistorial.length)
+    const total = chartData.reduce((sum, h) => sum + h.soldUnits, 0)
+    const facturacion = chartData.reduce((sum, h) => sum + h.salesAmount, 0)
+    const promedio = Math.round(total / chartData.length)
 
     return { total, promedio, facturacion }
-  }, [filteredHistorial])
+  }, [chartData])
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('es-CO', {
@@ -379,53 +416,71 @@ export default function ProductDetailPage() {
           </div>
         </div>
 
-        {/* Chart - Simple Bar Chart with CSS */}
+        {/* Area Chart */}
         {chartData.length > 0 ? (
-          <div className="relative">
-            {/* Tooltip */}
-            {hoveredBar !== null && chartData[hoveredBar] && (
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm z-10 pointer-events-none">
-                <p className="text-white font-medium">{chartData[hoveredBar].date}</p>
-                <p className="text-green-400">Ventas: {formatNumber(chartData[hoveredBar].ventas)}</p>
-                <p className="text-gray-400">Facturación: {formatCurrency(chartData[hoveredBar].facturacion)}</p>
-              </div>
-            )}
-
-            {/* Bar Chart */}
-            <div className="h-[250px] flex items-end gap-1 pt-8">
-              {chartData.map((item, index) => (
-                <div
-                  key={index}
-                  className="flex-1 flex flex-col items-center justify-end h-full group cursor-pointer"
-                  onMouseEnter={() => setHoveredBar(index)}
-                  onMouseLeave={() => setHoveredBar(null)}
-                >
-                  {/* Bar */}
-                  <div
-                    className={`w-full rounded-t transition-all duration-200 ${
-                      hoveredBar === index ? 'bg-green-400' : 'bg-green-500/70'
-                    }`}
-                    style={{ height: `${Math.max(item.percentage, 2)}%` }}
-                  />
-                  {/* Label - show every nth label based on data length */}
-                  {(chartData.length <= 15 || index % Math.ceil(chartData.length / 10) === 0) && (
-                    <span className="text-[10px] text-text-secondary mt-2 rotate-[-45deg] origin-top-left whitespace-nowrap">
-                      {item.date}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {/* Y-axis labels */}
-            <div className="absolute left-0 top-8 bottom-8 flex flex-col justify-between text-xs text-text-secondary pointer-events-none">
-              <span>{formatNumber(Math.max(...chartData.map(d => d.ventas)))}</span>
-              <span>{formatNumber(Math.round(Math.max(...chartData.map(d => d.ventas)) / 2))}</span>
-              <span>0</span>
-            </div>
+          <div className="h-80 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorVentas" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#10B981" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="#374151"
+                  vertical={false}
+                />
+                <XAxis
+                  dataKey="date"
+                  tickFormatter={formatDateShort}
+                  stroke="#6B7280"
+                  tick={{ fill: '#9CA3AF', fontSize: 12 }}
+                  tickLine={false}
+                  axisLine={false}
+                  interval="preserveStartEnd"
+                  minTickGap={50}
+                />
+                <YAxis
+                  stroke="#6B7280"
+                  tick={{ fill: '#9CA3AF', fontSize: 12 }}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(value) => value.toLocaleString('es-CO')}
+                  width={50}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#1F2937',
+                    border: '1px solid #374151',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)'
+                  }}
+                  labelStyle={{ color: '#F9FAFB', fontWeight: 'bold', marginBottom: '4px' }}
+                  itemStyle={{ color: '#10B981' }}
+                  labelFormatter={formatDateFull}
+                  formatter={(value: number, name: string) => {
+                    if (name === 'soldUnits') return [formatNumber(value), 'Ventas']
+                    if (name === 'salesAmount') return [formatCurrency(value), 'Facturación']
+                    return [formatNumber(value), name]
+                  }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="soldUnits"
+                  stroke="#10B981"
+                  strokeWidth={2}
+                  fillOpacity={1}
+                  fill="url(#colorVentas)"
+                  dot={false}
+                  activeDot={{ r: 6, fill: '#10B981', stroke: '#fff', strokeWidth: 2 }}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
         ) : (
-          <div className="h-[250px] flex items-center justify-center">
+          <div className="h-80 flex items-center justify-center">
             <div className="text-center">
               <Calendar className="w-12 h-12 text-text-secondary/30 mx-auto mb-4" />
               <p className="text-text-secondary">No hay datos de historial para este período</p>
