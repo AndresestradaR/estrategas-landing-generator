@@ -656,7 +656,7 @@ export default function ProductResearchPage() {
               </div>
 
               <p className="text-center text-xs text-text-secondary/70">
-                💡 Selecciona los competidores relevantes para tu producto. El análisis de precios usa rtrvr.ai (~$0.12 por landing)
+                Selecciona los competidores relevantes para tu producto
               </p>
             </div>
           )}
@@ -1035,7 +1035,7 @@ export default function ProductResearchPage() {
               )}
 
               <div className="text-center text-sm text-text-secondary/70 py-4">
-                <p>Los datos de precios se extrajeron usando rtrvr.ai (~$0.12 por cada landing page analizada)</p>
+                <p>Datos extraidos automaticamente de las landing pages</p>
               </div>
             </>
           )}

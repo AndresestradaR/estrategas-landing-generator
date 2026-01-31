@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { decrypt } from '@/lib/services/encryption'
 
-// Firecrawl API - más confiable para ecommerce
-const FIRECRAWL_API_URL = 'https://api.firecrawl.dev/v1/scrape'
+// Jina AI Reader - GRATIS, sin API key
+const JINA_READER_URL = 'https://r.jina.ai/'
 
 interface AdToAnalyze {
   id: string
@@ -29,64 +28,59 @@ interface AnalyzedCompetitor {
   headline: string | null
   cta: string | null
   error?: string
-  debug?: string
 }
 
 // Helper to extract price from text using regex
 function extractPriceFromText(text: string): { price: number | null, priceFormatted: string | null } {
   if (!text) return { price: null, priceFormatted: null }
-  
+
   // Pattern for Colombian/LATAM prices: $89.900, $149,900, COP 89900, etc.
   const patterns = [
     /\$\s*(\d{1,3}(?:[.,]\d{3})*)/g,  // $89.900 or $89,900
     /COP\s*(\d{1,3}(?:[.,]\d{3})*)/gi, // COP 89900
     /(\d{1,3}(?:[.,]\d{3})*)\s*(?:COP|pesos)/gi, // 89.900 COP
   ]
-  
+
   const prices: number[] = []
   const formattedPrices: string[] = []
-  
+
   for (const pattern of patterns) {
     let match
     while ((match = pattern.exec(text)) !== null) {
       const fullMatch = match[0]
       const numPart = match[1]
-      
+
       // Convert to number: remove dots/commas used as thousands separator
       const cleaned = numPart.replace(/[.,]/g, '')
       const num = parseInt(cleaned, 10)
-      
-      // Valid price range for LATAM ecommerce (1,000 to 10,000,000)
-      if (num >= 1000 && num <= 10000000) {
+
+      // Valid price range for LATAM ecommerce (5,000 to 5,000,000)
+      if (num >= 5000 && num <= 5000000) {
         prices.push(num)
         formattedPrices.push(fullMatch)
       }
     }
   }
-  
+
   if (prices.length === 0) return { price: null, priceFormatted: null }
-  
-  // Return the most common price or the first one found
-  // Usually the sale price appears first or most frequently
-  const priceIndex = 0 // Take first price found (usually the sale price)
-  return { 
-    price: prices[priceIndex], 
-    priceFormatted: formattedPrices[priceIndex] 
+
+  // Return the lowest price (usually the sale price)
+  const minIndex = prices.indexOf(Math.min(...prices))
+  return {
+    price: prices[minIndex],
+    priceFormatted: formattedPrices[minIndex]
   }
 }
 
-// Extract info from markdown content
-function extractInfoFromMarkdown(markdown: string): Partial<AnalyzedCompetitor> {
+// Extract info from page content
+function extractInfoFromContent(content: string): Partial<AnalyzedCompetitor> {
   const result: Partial<AnalyzedCompetitor> = {}
-  
+
   // Extract price
-  const priceInfo = extractPriceFromText(markdown)
+  const priceInfo = extractPriceFromText(content)
   result.price = priceInfo.price
   result.priceFormatted = priceInfo.priceFormatted
-  
-  // Look for common ecommerce patterns
-  const lowerMarkdown = markdown.toLowerCase()
-  
+
   // Gift/shipping patterns
   const giftPatterns = [
     /env[ií]o\s*gratis/gi,
@@ -94,15 +88,17 @@ function extractInfoFromMarkdown(markdown: string): Partial<AnalyzedCompetitor> 
     /regalo\s*(?:sorpresa|incluido|gratis)/gi,
     /garant[ií]a\s*(?:de\s*)?\d+\s*(?:d[ií]as|meses|a[ñn]os)/gi,
     /devoluci[oó]n\s*gratis/gi,
+    /incluye\s+[^.]{5,50}/gi,
+    /gratis\s+[^.]{5,30}/gi,
   ]
-  
+
   const gifts: string[] = []
   for (const pattern of giftPatterns) {
-    const match = markdown.match(pattern)
+    const match = content.match(pattern)
     if (match) gifts.push(match[0])
   }
-  result.gift = gifts.length > 0 ? gifts.join(', ') : null
-  
+  result.gift = gifts.length > 0 ? gifts.slice(0, 2).join(', ') : null
+
   // Combo patterns
   const comboPatterns = [
     /\d+\s*x\s*\d+/gi, // 2x1, 3x2
@@ -110,37 +106,100 @@ function extractInfoFromMarkdown(markdown: string): Partial<AnalyzedCompetitor> 
     /pack\s*(?:de\s*)?\d+/gi, // Pack de 2
     /combo\s*(?:de\s*)?\d+/gi, // Combo de 3
     /paquete\s*(?:familiar|completo)/gi,
+    /\d+\s*unidades/gi,
+    /oferta\s*(?:especial|limitada)/gi,
+    /\d+%\s*(?:off|descuento|dto)/gi,
   ]
-  
+
   for (const pattern of comboPatterns) {
-    const match = markdown.match(pattern)
+    const match = content.match(pattern)
     if (match) {
       result.combo = match[0]
       break
     }
   }
-  
-  // Try to extract headline (first H1 or strong text)
-  const h1Match = markdown.match(/^#\s+(.+)$/m)
-  if (h1Match) result.headline = h1Match[1].substring(0, 100)
-  
+
+  // Try to extract headline (first significant line)
+  const lines = content.split('\n').filter(l => l.trim().length > 10 && l.trim().length < 150)
+  if (lines.length > 0) {
+    result.headline = lines[0].trim().substring(0, 100)
+  }
+
   // CTA patterns
   const ctaPatterns = [
-    /(?:comprar|buy)\s*(?:ahora|now)/gi,
-    /(?:agregar|add)\s*(?:al\s*carrito|to\s*cart)/gi,
-    /(?:hacer|realizar)\s*pedido/gi,
-    /(?:obtener|get)\s*(?:oferta|offer)/gi,
+    /comprar?\s*ahora/gi,
+    /buy\s*now/gi,
+    /agregar\s*al\s*carrito/gi,
+    /add\s*to\s*cart/gi,
+    /hacer\s*pedido/gi,
+    /realizar\s*pedido/gi,
+    /obtener\s*oferta/gi,
+    /pedir\s*ahora/gi,
+    /lo\s*quiero/gi,
+    /ordenar/gi,
   ]
-  
+
   for (const pattern of ctaPatterns) {
-    const match = markdown.match(pattern)
+    const match = content.match(pattern)
     if (match) {
       result.cta = match[0]
       break
     }
   }
-  
+
+  // Detect sales angle from keywords
+  const anglePatterns = [
+    { pattern: /original|aut[eé]ntico/gi, angle: 'Autenticidad' },
+    { pattern: /garant[ií]a|devoluc/gi, angle: 'Garantia' },
+    { pattern: /env[ií]o\s*gratis|free\s*ship/gi, angle: 'Envio gratis' },
+    { pattern: /oferta|descuento|promo/gi, angle: 'Precio/Oferta' },
+    { pattern: /calidad|premium|mejor/gi, angle: 'Calidad' },
+    { pattern: /r[aá]pido|inmediato|hoy/gi, angle: 'Rapidez' },
+    { pattern: /resultados|funciona|efectivo/gi, angle: 'Resultados' },
+  ]
+
+  for (const { pattern, angle } of anglePatterns) {
+    if (pattern.test(content)) {
+      result.angle = angle
+      break
+    }
+  }
+
   return result
+}
+
+// Fetch page content using Jina AI Reader (FREE)
+async function fetchWithJina(url: string): Promise<string | null> {
+  try {
+    const jinaUrl = JINA_READER_URL + url
+
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 30000) // 30s timeout
+
+    const response = await fetch(jinaUrl, {
+      headers: {
+        'Accept': 'text/plain',
+      },
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      console.error('Jina error for ' + url + ': ' + response.status)
+      return null
+    }
+
+    const content = await response.text()
+    return content
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      console.error('Timeout fetching ' + url)
+    } else {
+      console.error('Error fetching ' + url + ':', error.message)
+    }
+    return null
+  }
 }
 
 export async function POST(request: Request) {
@@ -152,21 +211,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    // Get user's Firecrawl API key (stored in same field as rtrvr for now)
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('rtrvr_api_key')
-      .eq('id', user.id)
-      .single()
-
-    if (profileError || !profile?.rtrvr_api_key) {
-      return NextResponse.json({ 
-        error: 'API key no configurada. Ve a Configuración para agregarla.' 
-      }, { status: 400 })
-    }
-
-    const apiKey = decrypt(profile.rtrvr_api_key)
-    
     const body = await request.json()
     const { ads } = body as { ads: AdToAnalyze[] }
 
@@ -175,66 +219,41 @@ export async function POST(request: Request) {
     }
 
     if (ads.length > 10) {
-      return NextResponse.json({ error: 'Máximo 10 competidores por análisis' }, { status: 400 })
+      return NextResponse.json({ error: 'Maximo 10 competidores por analisis' }, { status: 400 })
     }
 
-    console.log(`Analyzing ${ads.length} competitors with Firecrawl`)
+    console.log('Analyzing ' + ads.length + ' competitors with Jina AI Reader (FREE)')
 
     // Analyze each landing page in parallel
     const results: AnalyzedCompetitor[] = await Promise.all(
       ads.map(async (ad) => {
-        let debugInfo = ''
-        
         try {
-          const controller = new AbortController()
-          const timeoutId = setTimeout(() => controller.abort(), 45000)
+          // Fetch content using Jina AI (FREE)
+          const content = await fetchWithJina(ad.landingUrl)
 
-          debugInfo += `URL: ${ad.landingUrl} | `
-
-          const response = await fetch(FIRECRAWL_API_URL, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${apiKey}`,
-              'Content-Type': 'application/json',
-            },
-            signal: controller.signal,
-            body: JSON.stringify({
-              url: ad.landingUrl,
-              formats: ['markdown'],
-              onlyMainContent: true,
-              waitFor: 3000, // Wait 3s for JS to render
-            }),
-          })
-
-          clearTimeout(timeoutId)
-
-          const responseText = await response.text()
-          debugInfo += `Status: ${response.status} | `
-
-          if (!response.ok) {
-            // If Firecrawl fails, try with rtrvr.ai as fallback
-            debugInfo += `Firecrawl error: ${responseText.substring(0, 200)}`
-            console.error(`Firecrawl error for ${ad.landingUrl}:`, response.status, responseText.substring(0, 500))
-            throw new Error(`API error: ${response.status}`)
+          if (!content) {
+            return {
+              id: ad.id,
+              advertiserName: ad.advertiserName,
+              landingUrl: ad.landingUrl,
+              adLibraryUrl: ad.adLibraryUrl || '',
+              adText: ad.adText || '',
+              ctaText: ad.ctaText || '',
+              price: null,
+              priceFormatted: null,
+              combo: null,
+              gift: null,
+              angle: null,
+              headline: null,
+              cta: null,
+              error: 'No se pudo extraer el contenido',
+            }
           }
 
-          let data: any
-          try {
-            data = JSON.parse(responseText)
-          } catch {
-            throw new Error(`Invalid JSON: ${responseText.substring(0, 100)}`)
-          }
+          // Extract info from content
+          const extractedInfo = extractInfoFromContent(content)
 
-          // Firecrawl returns { success: true, data: { markdown: "..." } }
-          const markdown = data.data?.markdown || data.markdown || ''
-          debugInfo += `Markdown length: ${markdown.length} | `
-          
-          console.log(`Firecrawl response for ${ad.advertiserName}:`, markdown.substring(0, 500))
-
-          // Extract info from markdown
-          const extractedInfo = extractInfoFromMarkdown(markdown)
-          
-          debugInfo += `Price: ${extractedInfo.price}`
+          console.log('Analyzed ' + ad.advertiserName + ': price=' + extractedInfo.price)
 
           return {
             id: ad.id,
@@ -250,10 +269,9 @@ export async function POST(request: Request) {
             angle: extractedInfo.angle || null,
             headline: extractedInfo.headline || null,
             cta: extractedInfo.cta || null,
-            debug: debugInfo,
           }
         } catch (error: any) {
-          console.error(`Error analyzing ${ad.landingUrl}:`, error)
+          console.error('Error analyzing ' + ad.landingUrl + ':', error)
           return {
             id: ad.id,
             advertiserName: ad.advertiserName,
@@ -268,10 +286,7 @@ export async function POST(request: Request) {
             angle: null,
             headline: null,
             cta: null,
-            error: error.name === 'AbortError' 
-              ? 'Timeout al analizar landing' 
-              : (error.message || 'Error al analizar landing page'),
-            debug: debugInfo,
+            error: error.message || 'Error al analizar landing page',
           }
         }
       })
@@ -298,8 +313,8 @@ export async function POST(request: Request) {
 
   } catch (error: any) {
     console.error('Competitor analyze error:', error)
-    return NextResponse.json({ 
-      error: error.message || 'Error interno del servidor' 
+    return NextResponse.json({
+      error: error.message || 'Error interno del servidor'
     }, { status: 500 })
   }
 }
