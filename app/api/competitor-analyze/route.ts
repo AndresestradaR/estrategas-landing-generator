@@ -390,7 +390,6 @@ export async function POST(request: Request) {
         // Delay entre requests para evitar rate limit
         await delay(1000)
       }
-    }
 
     // Calculate statistics
     const validPrices = results.filter(r => r.price !== null && r.price > 0).map(r => r.price as number)
